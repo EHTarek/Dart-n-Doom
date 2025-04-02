@@ -56,7 +56,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'DOOM Flutter',
+      title: 'Dart\'n Doom',
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
         useMaterial3: true,
@@ -299,36 +299,161 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildDoomLogo() {
-    return ShaderMask(
-      shaderCallback: (Rect bounds) {
-        return LinearGradient(
-          colors: [
-            Colors.red.shade800,
-            Colors.yellow,
-            Colors.red.shade800,
-          ],
-          stops: const [0.0, 0.5, 1.0],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ).createShader(bounds);
-      },
-      blendMode: BlendMode.srcATop,
-      child: const Text(
-        'DOOM FLUTTER',
-        style: TextStyle(
-          fontSize: 48,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 2,
-          color: Colors.white,
-          shadows: [
-            Shadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 5,
-            ),
-          ],
+    return Column(
+      children: [
+        // Main logo with flickering effect
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.8, end: 1.0),
+          duration: const Duration(milliseconds: 500),
+          builder: (context, value, child) {
+            return Opacity(
+              opacity: value,
+              child: ShaderMask(
+                shaderCallback: (Rect bounds) {
+                  return LinearGradient(
+                    colors: [
+                      Colors.red.shade900,
+                      Colors.redAccent,
+                      Colors.red.shade800,
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ).createShader(bounds);
+                },
+                blendMode: BlendMode.srcATop,
+                child: Stack(
+                  children: [
+                    // Shadow text for depth
+                    Positioned(
+                      left: 3,
+                      top: 3,
+                      child: Text(
+                        'DART\'N DOOM',
+                        style: TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                          color: Colors.black.withOpacity(0.7),
+                        ),
+                      ),
+                    ),
+                    // Main text
+                    Text(
+                      'DART\'N DOOM',
+                      style: TextStyle(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.red.shade800.withOpacity(0.7),
+                            offset: const Offset(0, 0),
+                            blurRadius: 10,
+                          ),
+                          Shadow(
+                            color: Colors.black,
+                            offset: const Offset(3, 3),
+                            blurRadius: 5,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Blood drips on logo
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: 15,
+                      child: CustomPaint(
+                        painter: BloodDripPainter(dripsCount: 8, maxHeight: 15),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-      ),
+
+        // Fighting game style "VS" section
+        Container(
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.black,
+                Colors.red.shade900.withOpacity(0.5),
+                Colors.black,
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'YOU',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  shadows: [
+                    Shadow(
+                      color: Colors.blue,
+                      offset: Offset(0, 0),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade900,
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.withOpacity(0.5),
+                      spreadRadius: 1,
+                      blurRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  'VS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'DEMONS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  shadows: [
+                    Shadow(
+                      color: Colors.red,
+                      offset: Offset(0, 0),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -347,15 +472,15 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 320,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade800,
+                  color: Colors.grey.shade900,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.grey.shade600,
+                    color: Colors.red.shade800,
                     width: 2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.red.shade900.withOpacity(0.3),
                       spreadRadius: 1,
                       blurRadius: 10,
                       offset: const Offset(0, 5),
@@ -374,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Column(
                   children: [
                     const Text(
-                      'PLAYER NAME',
+                      'FIGHTER NAME',
                       style: TextStyle(
                         color: Colors.red,
                         fontSize: 20,
@@ -423,7 +548,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               // Game menu buttons with bloody style
               _buildBloodButton(
-                'START GAME',
+                'ENTER BATTLE',
                 onTap: () {
                   final username = _usernameController.text.trim();
                   if (username.isNotEmpty) {
@@ -432,7 +557,7 @@ class _HomeScreenState extends State<HomeScreen>
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Please enter a username'),
+                        content: Text('Please enter a fighter name'),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -443,7 +568,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 20),
 
               _buildBloodButton(
-                'OPTIONS',
+                'COMBAT OPTIONS',
                 onTap: () {
                   setState(() {
                     _isOptionsOpen = true;
@@ -454,45 +579,22 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 20),
 
               _buildBloodButton(
-                'EXIT',
+                'SURRENDER',
                 onTap: () {
                   // Just for show, as we can't actually exit the web app
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Cannot exit in web mode'),
+                      content: Text('Surrender is not an option!'),
                       backgroundColor: Colors.red,
                     ),
                   );
                 },
               ),
 
-              const SizedBox(height: 50),
+              const SizedBox(height: 30),
 
-              // Game instructions with flickering effect
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.7, end: 1.0),
-                duration: const Duration(milliseconds: 1500),
-                builder: (context, value, child) {
-                  return Opacity(
-                    opacity: value,
-                    child: Text(
-                      'Use WASD or arrow keys to move\nSPACE or CLICK to shoot\nCollect health packs and ammo to survive',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.red.withOpacity(0.8),
-                        fontSize: 14,
-                        shadows: [
-                          Shadow(
-                            color: Colors.red.withOpacity(0.3),
-                            blurRadius: 5,
-                            offset: const Offset(0, 0),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+              // Game instructions with fighting game theme
+              _buildGameInstructions(),
             ],
           ),
         ),
@@ -522,41 +624,399 @@ class _HomeScreenState extends State<HomeScreen>
           borderRadius: BorderRadius.circular(5),
           boxShadow: [
             BoxShadow(
-              color: Colors.red.withOpacity(0.3),
-              spreadRadius: 1,
+              color: Colors.red.withOpacity(0.5),
+              spreadRadius: 2,
               blurRadius: 15,
               offset: const Offset(0, 0),
             ),
           ],
+          border: Border.all(
+            color: Colors.red.shade700,
+            width: 1.5,
+          ),
         ),
         child: Stack(
           children: [
             // Blood drip details
             CustomPaint(
               size: const Size(300, 60),
-              painter: BloodDripPainter(),
+              painter: BloodDripPainter(dripsCount: 10, maxHeight: 10),
             ),
+
+            // Metallic shine effect
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 10,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.1),
+                      Colors.white.withOpacity(0.05),
+                      Colors.white.withOpacity(0.0),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(5),
+                    topRight: Radius.circular(5),
+                  ),
+                ),
+              ),
+            ),
+
             // Button label
             Center(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black,
-                      offset: Offset(2, 2),
-                      blurRadius: 3,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Battle symbol (optional)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CustomPaint(
+                      painter: BattleSymbolPainter(),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Button text
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          offset: Offset(2, 2),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Mirror symbol on the right
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CustomPaint(
+                      painter: BattleSymbolPainter(mirror: true),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // This method builds the instructions section with a fighting game theme
+  Widget _buildGameInstructions() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.7),
+        border: Border.all(
+          color: Colors.red.shade900,
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            "BATTLE CONTROLS",
+            style: TextStyle(
+              color: Colors.red,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Movement controls
+              _buildControlColumn(
+                "MOVEMENT",
+                ["W", "A/S/D", "ARROWS"],
+                Icons.gamepad,
+              ),
+              const SizedBox(width: 30),
+              // Attack controls
+              _buildControlColumn(
+                "ATTACKS",
+                ["SPACE", "CLICK", "COLLECT POWER-UPS"],
+                Icons.flash_on,
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.red.shade900.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: const Text(
+              "DEFEAT ALL DEMONS TO ADVANCE",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to build control columns
+  Widget _buildControlColumn(
+      String title, List<String> controls, IconData icon) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          color: Colors.red.shade200,
+          size: 20,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          title,
+          style: TextStyle(
+            color: Colors.red.shade200,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 5),
+        ...controls.map((control) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text(
+                control,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                ),
+              ),
+            )),
+      ],
+    );
+  }
+
+  Widget _buildLoadingScreen(Size size) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // VS animation
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 800),
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: 1.0 + (1.0 - value) * 0.5,
+                child: Opacity(
+                  opacity: value,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 30, vertical: 15),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade900,
+                      borderRadius: BorderRadius.circular(5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.7),
+                          spreadRadius: 5,
+                          blurRadius: 15,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: const Text(
+                      'VS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 70,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 50),
+
+          // Loading bar with demonic theme
+          SizedBox(
+            width: 300,
+            child: Column(
+              children: [
+                // Player vs enemies display
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Player display
+                    Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade800,
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(
+                              color: Colors.blue.shade200,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'P',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _usernameController.text.isEmpty
+                              ? 'FIGHTER'
+                              : _usernameController.text.toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Enemies display
+                    Row(
+                      children: [
+                        Text(
+                          'HELLSPAWN',
+                          style: TextStyle(
+                            color: Colors.red.shade300,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade900,
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(
+                              color: Colors.red.shade300,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'E',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // Loading progress
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    children: [
+                      // Blood container
+                      Container(
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade900,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+
+                      // Progress indicator
+                      Container(
+                        height: 20,
+                        width: 300 * _loadingProgress,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.red.shade900,
+                              Colors.red.shade700,
+                              Colors.red.shade900,
+                            ],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: _loadingProgress > 0.05
+                              ? Container(
+                                  width: 30,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.red.shade900.withOpacity(0.0),
+                                        Colors.red.shade200.withOpacity(0.8),
+                                      ],
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Loading message
+                Text(
+                  _getRandomLoadingMessage(),
+                  style: TextStyle(
+                    color: Colors.red.shade400,
+                    fontSize: 16,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -582,78 +1042,116 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ShaderMask(
-              shaderCallback: (Rect bounds) {
-                return LinearGradient(
-                  colors: [
-                    Colors.red.shade800,
-                    Colors.yellow,
-                    Colors.red.shade800,
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
-                ).createShader(bounds);
-              },
-              child: const Text(
-                'OPTIONS',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+            // Title with flaming effect
+            Stack(
+              children: [
+                // Flames behind title
+                SizedBox(
+                  height: 50,
+                  child: CustomPaint(
+                    painter: FlamesPainter(),
+                    size: const Size(300, 40),
+                  ),
                 ),
-              ),
+                // Title text
+                ShaderMask(
+                  shaderCallback: (Rect bounds) {
+                    return LinearGradient(
+                      colors: [
+                        Colors.red.shade800,
+                        Colors.yellow,
+                        Colors.red.shade800,
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ).createShader(bounds);
+                  },
+                  child: const Text(
+                    'COMBAT OPTIONS',
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 30),
 
             // Difficulty options
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'DIFFICULTY:',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.red.shade900,
+                  width: 1,
                 ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'COMBAT DIFFICULTY:',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  // Difficulty selection
+                  Row(
+                    children: [
+                      _buildDoomDifficultyOption(0, 'Easy', 'ROOKIE'),
+                      const SizedBox(width: 10),
+                      _buildDoomDifficultyOption(1, 'Medium', 'VETERAN'),
+                      const SizedBox(width: 10),
+                      _buildDoomDifficultyOption(2, 'Hard', 'SLAYER'),
+                    ],
+                  ),
+                ],
               ),
             ),
 
-            const SizedBox(height: 10),
-
-            // Difficulty selection
-            Row(
-              children: [
-                _buildDoomDifficultyOption(0, 'Easy', 'Too Young to Die'),
-                const SizedBox(width: 10),
-                _buildDoomDifficultyOption(1, 'Medium', 'Hurt Me Plenty'),
-                const SizedBox(width: 10),
-                _buildDoomDifficultyOption(2, 'Hard', 'Nightmare!'),
-              ],
-            ),
-
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
 
             // Sound settings
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'SOUND EFFECTS:',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.red.shade900,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'BATTLE SOUNDS:',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                Switch(
-                  value: true, // Set based on actual preference
-                  onChanged: (value) {
-                    // TODO: Implement sound settings
-                  },
-                  activeColor: Colors.red.shade400,
-                  activeTrackColor: Colors.red.shade800,
-                ),
-              ],
+                  Switch(
+                    value: true, // Set based on actual preference
+                    onChanged: (value) {
+                      // TODO: Implement sound settings
+                    },
+                    activeColor: Colors.red.shade400,
+                    activeTrackColor: Colors.red.shade800,
+                  ),
+                ],
+              ),
             ),
 
             const SizedBox(height: 30),
@@ -679,16 +1177,34 @@ class _HomeScreenState extends State<HomeScreen>
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(5),
-                ),
-                child: const Center(
-                  child: Text(
-                    'BACK',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 10,
                     ),
+                  ],
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.red.shade200,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'RETURN TO BATTLE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -699,8 +1215,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildDoomDifficultyOption(int level, String label, String doomName) {
-    bool isSelected = _difficulty == level;
+  Widget _buildDoomDifficultyOption(
+      int level, String label, String difficultyName) {
+    final isSelected = _difficulty == level;
 
     return Expanded(
       child: GestureDetector(
@@ -710,33 +1227,57 @@ class _HomeScreenState extends State<HomeScreen>
           });
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 15),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.red.shade800 : Colors.grey.shade800,
+            gradient: isSelected
+                ? LinearGradient(
+                    colors: [
+                      Colors.red.shade900,
+                      Colors.red.shade800,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  )
+                : LinearGradient(
+                    colors: [
+                      Colors.grey.shade800,
+                      Colors.grey.shade900,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isSelected ? Colors.red : Colors.grey.shade700,
-              width: 2,
+              color: isSelected ? Colors.red.shade400 : Colors.grey.shade700,
+              width: 1,
             ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.red.withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 5,
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             children: [
               Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.grey.shade300,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                doomName,
+                difficultyName,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: isSelected ? Colors.yellow : Colors.grey.shade400,
-                  fontSize: 10,
+                  color: isSelected ? Colors.white : Colors.grey.shade400,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
+              if (isSelected)
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.red.shade200,
+                  size: 16,
+                ),
             ],
           ),
         ),
@@ -744,117 +1285,64 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildLoadingScreen(Size size) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(height: 100),
-
-          const Text(
-            'LOADING...',
-            style: TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.bold,
-              color: Colors.red,
-              letterSpacing: 3,
-              shadows: [
-                Shadow(
-                  color: Colors.black,
-                  offset: Offset(3, 3),
-                  blurRadius: 5,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 50),
-
-          // Custom DOOM-style loading bar with blood filling
-          Container(
-            width: 350,
-            height: 25,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              border: Border.all(
-                color: Colors.red.shade800,
-                width: 2,
-              ),
-            ),
-            child: Stack(
-              children: [
-                // Blood fill
-                Container(
-                  width: 350 * _loadingProgress,
-                  height: 25,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.red.shade900,
-                        Colors.red.shade600,
-                        Colors.red.shade900,
-                      ],
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                    ),
-                  ),
-                ),
-
-                // Loading percentage text
-                SizedBox(
-                  width: 350,
-                  child: Center(
-                    child: Text(
-                      '${(_loadingProgress * 100).toInt()}%',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black,
-                            offset: Offset(1, 1),
-                            blurRadius: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 30),
-
-          // Random loading messages
-          Text(
-            _getRandomLoadingMessage(),
-            style: const TextStyle(
-              color: Colors.grey,
-              fontSize: 16,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _getRandomLoadingMessage() {
     final messages = [
-      "Warming up BFG-9000...",
-      "Spawning demons...",
-      "Generating hell portals...",
-      "Preparing chainsaw...",
-      "Loading ammunition...",
-      "Initializing demon AI...",
-      "Unleashing the forces of hell...",
-      "Counting ammo...",
-      "Sharpening chainsaw teeth...",
-      "Reloading shotgun..."
+      "Summoning hellish enemies...",
+      "Sharpening combat blades...",
+      "Preparing battle arena...",
+      "Loading demonic textures...",
+      "Arming combat systems...",
+      "Calculating damage modifiers...",
+      "Calibrating weapons...",
+      "Initializing combat AI...",
+      "Opening portal to hell...",
+      "Preparing your resurrection stone..."
     ];
 
     return messages[_random.nextInt(messages.length)];
   }
+}
+
+class FlamesPainter extends CustomPainter {
+  final math.Random _random = math.Random();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final int flameCount = 15;
+
+    for (int i = 0; i < flameCount; i++) {
+      final double x = size.width * i / flameCount;
+      final double height = 10 + _random.nextDouble() * 20;
+
+      final path = Path();
+      path.moveTo(x, size.height);
+
+      // Create flame shape with bezier curves
+      path.cubicTo(x - 5, size.height - height / 3, x + 5,
+          size.height - height * 2 / 3, x, size.height - height);
+
+      path.cubicTo(x - 5, size.height - height * 2 / 3, x + 5,
+          size.height - height / 3, x, size.height);
+
+      // Create gradient for flame
+      final paint = Paint()
+        ..shader = LinearGradient(
+          colors: [
+            Colors.yellow,
+            Colors.orange,
+            Colors.red.shade900,
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ).createShader(
+            Rect.fromLTRB(x - 10, size.height - height, x + 10, size.height));
+
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
 class FlameParticle {
@@ -885,149 +1373,186 @@ class DoomBackgroundPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Dark background
-    final backgroundPaint = Paint()..color = Colors.black;
-    canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
+    // Draw dark gradient background
+    final Rect rect = Offset.zero & size;
+    final Paint paint = Paint();
 
-    // Draw animated grid lines
-    final gridPaint = Paint()
-      ..color = Colors.red.withOpacity(0.3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+    // Darker, more ominous gradient
+    final Gradient gradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFF000000),
+        const Color(0xFF1A0000),
+        const Color(0xFF290000),
+      ],
+    );
 
-    // Vertical lines
-    final gridSize = 50.0;
-    final xOffset = (animationValue * gridSize) % gridSize;
-    for (double x = -xOffset; x < size.width; x += gridSize) {
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        gridPaint,
+    paint.shader = gradient.createShader(rect);
+    canvas.drawRect(rect, paint);
+
+    // Draw blood splatters in the background
+    final bloodPaint = Paint()..color = Colors.red.shade900.withOpacity(0.2);
+
+    // Generate blood splatters based on animation value
+    final int numSplatters = 20;
+    for (int i = 0; i < numSplatters; i++) {
+      final double x = _random.nextDouble() * size.width;
+      final double y = _random.nextDouble() * size.height;
+
+      // Vary the size and opacity based on animation
+      final double splatterSize = 5.0 + 20.0 * _random.nextDouble();
+      final double opacity = 0.1 + 0.3 * _random.nextDouble();
+
+      bloodPaint.color = Colors.red.shade900.withOpacity(opacity);
+
+      canvas.drawCircle(
+        Offset(x, y),
+        splatterSize,
+        bloodPaint,
       );
+
+      // Add drip effect to some splatters
+      if (_random.nextBool()) {
+        final path = Path();
+        path.moveTo(x, y);
+
+        final double dripLength = 10.0 + 30.0 * _random.nextDouble();
+        final double controlX = x + (5.0 - 10.0 * _random.nextDouble());
+
+        path.quadraticBezierTo(controlX, y + dripLength / 2, x, y + dripLength);
+
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = Colors.red.shade900.withOpacity(opacity * 0.7)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.0 + 3.0 * _random.nextDouble(),
+        );
+      }
     }
 
-    // Horizontal lines
-    for (double y = 0; y < size.height; y += gridSize) {
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        gridPaint,
-      );
-    }
-
-    // Draw random pentagram symbols
-    final pentagrams = 3;
-    for (int i = 0; i < pentagrams; i++) {
-      final x = _random.nextDouble() * size.width;
-      final y = 300 + _random.nextDouble() * (size.height - 400);
-      final radius = 40.0 + _random.nextDouble() * 20.0;
-
-      final pentagramPaint = Paint()
-        ..color = Colors.red.withOpacity(
-            0.1 + (math.sin(animationValue * math.pi * 2 + i) + 1) / 10)
+    // Add demonic symbols or glyphs occasionally
+    if (animationValue > 0.8) {
+      final demonicPaint = Paint()
+        ..color = Colors.red.shade700.withOpacity(0.15)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
+        ..strokeWidth = 2.0;
 
-      _drawPentagram(canvas, x, y, radius, pentagramPaint);
+      // Simple pentagram
+      final double centerX = size.width * 0.25;
+      final double centerY = size.height * 0.7;
+      final double radius = 50.0;
+
+      final Path pentagram = Path();
+
+      for (int i = 0; i < 5; i++) {
+        final double angle = (i * 144) * math.pi / 180;
+        final double x = centerX + radius * math.cos(angle);
+        final double y = centerY + radius * math.sin(angle);
+
+        if (i == 0) {
+          pentagram.moveTo(x, y);
+        } else {
+          pentagram.lineTo(x, y);
+        }
+      }
+      pentagram.close();
+
+      canvas.drawPath(pentagram, demonicPaint);
     }
-  }
-
-  void _drawPentagram(
-      Canvas canvas, double x, double y, double radius, Paint paint) {
-    final path = Path();
-    final points = <Offset>[];
-
-    for (int i = 0; i < 5; i++) {
-      final angle = -math.pi / 2 + i * 2 * math.pi / 5;
-      points.add(Offset(
-        x + radius * math.cos(angle),
-        y + radius * math.sin(angle),
-      ));
-    }
-
-    // Connect in pentagram pattern: 0->2->4->1->3->0
-    path.moveTo(points[0].dx, points[0].dy);
-    path.lineTo(points[2].dx, points[2].dy);
-    path.lineTo(points[4].dx, points[4].dy);
-    path.lineTo(points[1].dx, points[1].dy);
-    path.lineTo(points[3].dx, points[3].dy);
-    path.close();
-
-    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant DoomBackgroundPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
-  }
+  bool shouldRepaint(DoomBackgroundPainter oldDelegate) => true;
 }
 
 class BloodDripPainter extends CustomPainter {
+  final int dripsCount;
+  final double maxHeight;
   final math.Random _random = math.Random();
+
+  BloodDripPainter({this.dripsCount = 5, this.maxHeight = 20});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Paint for blood drips
-    final bloodPaint = Paint()
+    final Paint paint = Paint()
       ..color = Colors.red.shade900
       ..style = PaintingStyle.fill;
 
-    // Add blood drips at the top
-    final numDrips = 6 + _random.nextInt(4);
-    for (int i = 0; i < numDrips; i++) {
-      final x = _random.nextDouble() * size.width;
-      final width = 5 + _random.nextDouble() * 10;
-      final height = 5 + _random.nextDouble() * 15;
+    // Create blood drip effect
+    for (int i = 0; i < dripsCount; i++) {
+      final double x = size.width * i / (dripsCount - 1);
+      final double height = _random.nextDouble() * maxHeight;
+      final double width = 4 + _random.nextDouble() * 6;
 
-      // Drip shape
-      final path = Path();
-      path.moveTo(x, 0);
+      final Path path = Path();
+      path.moveTo(x - width / 2, 0);
       path.quadraticBezierTo(
-        x + width / 2,
+        x,
         height / 2,
         x,
         height,
       );
       path.quadraticBezierTo(
-        x - width / 2,
-        height / 2,
         x,
+        height / 2,
+        x + width / 2,
         0,
       );
+      path.close();
 
-      canvas.drawPath(path, bloodPaint);
+      canvas.drawPath(path, paint);
     }
 
-    // Add blood drips at the bottom
-    final numBottomDrips = 4 + _random.nextInt(3);
-    for (int i = 0; i < numBottomDrips; i++) {
-      final x = _random.nextDouble() * size.width;
-      final width = 5 + _random.nextDouble() * 8;
-      final height = 5 + _random.nextDouble() * 12;
+    // Add additional splatters
+    for (int i = 0; i < dripsCount ~/ 2; i++) {
+      final double x = _random.nextDouble() * size.width;
+      final double y = _random.nextDouble() * size.height;
+      final double radius = 1 + _random.nextDouble() * 3;
 
-      // Drip shape
-      final path = Path();
-      path.moveTo(x, size.height);
-      path.quadraticBezierTo(
-        x + width / 2,
-        size.height - height / 2,
-        x,
-        size.height - height,
-      );
-      path.quadraticBezierTo(
-        x - width / 2,
-        size.height - height / 2,
-        x,
-        size.height,
-      );
-
-      canvas.drawPath(path, bloodPaint);
+      canvas.drawCircle(Offset(x, y), radius, paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+  bool shouldRepaint(BloodDripPainter oldDelegate) => false;
+}
+
+// Small battle symbol for buttons
+class BattleSymbolPainter extends CustomPainter {
+  final bool mirror;
+
+  BattleSymbolPainter({this.mirror = false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    final path = Path();
+
+    if (mirror) {
+      // Mirrored sword/dagger symbol
+      path.moveTo(size.width, size.height / 2);
+      path.lineTo(0, size.height / 2);
+      path.moveTo(size.width * 0.3, size.height * 0.3);
+      path.lineTo(0, size.height / 2);
+      path.lineTo(size.width * 0.3, size.height * 0.7);
+    } else {
+      // Sword/dagger symbol
+      path.moveTo(0, size.height / 2);
+      path.lineTo(size.width, size.height / 2);
+      path.moveTo(size.width * 0.7, size.height * 0.3);
+      path.lineTo(size.width, size.height / 2);
+      path.lineTo(size.width * 0.7, size.height * 0.7);
+    }
+
+    canvas.drawPath(path, paint);
   }
+
+  @override
+  bool shouldRepaint(BattleSymbolPainter oldDelegate) => false;
 }

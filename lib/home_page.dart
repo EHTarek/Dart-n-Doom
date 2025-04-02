@@ -27,10 +27,54 @@ class Enemy {
   double lastSeenPlayerTime = 0; // Track when enemy last saw player
   Offset lastKnownPlayerPos = Offset.zero; // Last known player position
 
+  // New properties for enhanced behavior
+  String enemyType = 'soldier'; // Types: 'soldier', 'heavy', 'scout'
+  double hearingRadius = 150; // Distance at which enemy can hear player shots
+  double patrolTimer = 0; // Timer for patrol behavior
+  List<Offset> patrolPoints = []; // Points for patrol paths
+  int currentPatrolPoint = 0; // Current patrol destination
+  double alertness = 0; // Increases when suspicious, affects reaction time
+  double visionConeAngle = pi / 2; // Width of vision cone (radians)
+  double currentAngle = 0; // Current facing direction
+  bool alerted = false; // True when enemy is alert to player presence
+
   Enemy(this.position, this.size, {this.color = Colors.red}) {
     // Randomize some enemy properties
     moveSpeed = 15 + Random().nextDouble() * 15; // Between 15-30
     isAggressive = Random().nextBool(); // 50% chance to be aggressive
+
+    // Assign random enemy type
+    final types = ['soldier', 'heavy', 'scout'];
+    enemyType = types[Random().nextInt(types.length)];
+
+    // Set properties based on enemy type
+    switch (enemyType) {
+      case 'soldier':
+        health = 100;
+        moveSpeed *= 1.0;
+        hearingRadius = 150;
+        visionConeAngle = pi / 2.5; // ~72 degrees
+        break;
+      case 'heavy':
+        health = 200;
+        moveSpeed *= 0.7; // Slower
+        color = Colors.blue.shade800;
+        hearingRadius = 120; // Poor hearing
+        visionConeAngle = pi / 3; // ~60 degrees - narrower vision
+        size *= 1.3; // Larger size
+        break;
+      case 'scout':
+        health = 70;
+        moveSpeed *= 1.5; // Faster
+        color = Colors.green.shade800;
+        hearingRadius = 200; // Better hearing
+        visionConeAngle = pi / 1.8; // ~100 degrees - wider vision
+        size *= 0.9; // Smaller size
+        break;
+    }
+
+    // Randomly initialize facing direction
+    currentAngle = Random().nextDouble() * 2 * pi;
   }
 
   // Check if enemy can see the player (for shooting)
@@ -43,7 +87,23 @@ class Enemy {
     double distance = sqrt(dx * dx + dy * dy);
 
     // Too far to see
-    if (distance > 500) return false;
+    double sightDistance = (enemyType == 'scout')
+        ? 600
+        : (enemyType == 'heavy')
+            ? 400
+            : 500;
+    if (distance > sightDistance) return false;
+
+    // Check if player is within vision cone
+    double angleToPlayer = atan2(dy, dx);
+    double angleDiff = (angleToPlayer - currentAngle).abs();
+    // Normalize angle difference
+    while (angleDiff > pi) angleDiff = 2 * pi - angleDiff;
+
+    // If player is outside vision cone, enemy can't see player
+    if (angleDiff > visionConeAngle / 2 && !alerted) {
+      return false;
+    }
 
     // Check if there's a wall between enemy and player
     double stepSize = 5;
@@ -69,10 +129,89 @@ class Enemy {
       }
     }
 
-    // Enemy can see player, update last known position
+    // Enemy can see player, update last known position and state
     lastKnownPlayerPos = playerPos;
     lastSeenPlayerTime = 0;
+
+    // Become alerted if not already
+    if (!alerted) {
+      alerted = true;
+    }
+
+    // Update facing direction to look at player
+    currentAngle = atan2(dy, dx);
+
     return true; // No walls blocking sight
+  }
+
+  // Check if enemy can hear player shooting
+  bool canHearPlayer(Offset playerPos, bool playerShooting) {
+    if (!playerShooting) return false;
+
+    // Calculate distance to player
+    double dx = playerPos.dx - position.dx;
+    double dy = playerPos.dy - position.dy;
+    double distance = sqrt(dx * dx + dy * dy);
+
+    // Check if within hearing radius
+    if (distance <= hearingRadius) {
+      // Enemy heard the shot
+      alertness += 0.3; // Increase alertness
+
+      // If very close or already somewhat alert, become fully alerted
+      if (distance < hearingRadius * 0.5 || alertness > 0.7) {
+        alerted = true;
+        lastKnownPlayerPos = playerPos;
+        // Turn toward sound
+        currentAngle = atan2(dy, dx);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Generate random patrol points around current position
+  void generatePatrolPoints(List<List<int>> map, double cellSize) {
+    patrolPoints.clear();
+
+    // Number of patrol points based on enemy type
+    int numPoints = (enemyType == 'scout')
+        ? 5
+        : (enemyType == 'heavy')
+            ? 2
+            : 3;
+
+    for (int i = 0; i < numPoints; i++) {
+      // Try to find valid patrol points
+      for (int attempt = 0; attempt < 10; attempt++) {
+        // Random distance and angle from current position
+        double distance = 100 + Random().nextDouble() * 200;
+        double angle = Random().nextDouble() * 2 * pi;
+
+        double x = position.dx + cos(angle) * distance;
+        double y = position.dy + sin(angle) * distance;
+
+        // Check if point is in an empty space
+        int cellX = (x / cellSize).floor();
+        int cellY = (y / cellSize).floor();
+
+        if (cellX >= 0 &&
+            cellX < map[0].length &&
+            cellY >= 0 &&
+            cellY < map.length &&
+            map[cellY][cellX] == 0) {
+          // Valid patrol point
+          patrolPoints.add(Offset(x, y));
+          break;
+        }
+      }
+    }
+
+    // Add current position as a fallback point
+    if (patrolPoints.isEmpty) {
+      patrolPoints.add(position);
+    }
   }
 
   // Move enemy towards target
@@ -87,6 +226,9 @@ class Enemy {
 
     // If we're very close to target, stop moving
     if (distance < 5) return;
+
+    // Update facing direction
+    currentAngle = atan2(dy, dx);
 
     // Normalize direction
     dx = dx / distance;
@@ -107,6 +249,28 @@ class Enemy {
         cellY < map.length &&
         map[cellY][cellX] != 1) {
       position = Offset(newX, newY);
+    } else {
+      // Try to slide along walls
+      // Try X movement only
+      cellX = (position.dx + dx * moveSpeed * dt / cellSize).floor();
+      if (cellX >= 0 &&
+          cellX < map[0].length &&
+          cellY >= 0 &&
+          cellY < map.length &&
+          map[cellY][cellX] != 1) {
+        position = Offset(position.dx + dx * moveSpeed * dt, position.dy);
+      }
+      // Try Y movement only
+      else {
+        cellY = (position.dy + dy * moveSpeed * dt / cellSize).floor();
+        if (cellX >= 0 &&
+            cellX < map[0].length &&
+            cellY >= 0 &&
+            cellY < map.length &&
+            map[cellY][cellX] != 1) {
+          position = Offset(position.dx, position.dy + dy * moveSpeed * dt);
+        }
+      }
     }
   }
 }
@@ -160,44 +324,65 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
   double lastDamageAmount = 0; // Amount of last damage taken
   double moveSpeed = 100; // units per second
 
+  // UI state
+  bool showControls = true; // Always show controls initially
+  double controlsFadeTimer = 5.0; // Controls fade after 5 seconds
+  bool controlsAlwaysOn = false; // Toggle for keeping controls visible
+
+  // Screen effects
+  Offset screenShakeOffset =
+      Offset.zero; // Current screen shake position offset
+  double screenShakeIntensity = 0; // How intense the shake should be
+  double screenShakeDuration = 0; // How long the current shake should last
+  double screenShakeMaxDuration = 0.5; // Maximum shake duration
+  double bloodOverlayOpacity = 0; // Opacity of blood overlay effect
+
   // Audio state
   bool backgroundMusicPlaying = false;
   bool bulletSoundLoaded = false;
 
-  // Wall texture
-  ui.Image? brickTexture;
+  // Graphics resources
   bool textureLoaded = false;
-
-  // Enemy texture
+  ui.Image? brickTexture;
   ui.Image? enemyTexture;
   bool enemyTextureLoaded = false;
-
-  // Gun texture
   ui.Image? gunTexture;
   bool gunTextureLoaded = false;
+  ui.Image? healthIcon;
+  ui.Image? ammoIcon;
 
   // Items list
   List<Item> items = [];
 
   // Simple map: 1 = wall, 0 = empty space.
   final List<List<int>> map = [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+    [1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+    [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1],
+    [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1],
+    [1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+    [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+    [1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+    [1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   ];
-  final int mapWidth = 10;
-  final int mapHeight = 10;
+  final int mapWidth = 20;
+  final int mapHeight = 20;
   final double cellSize = 64; // Each map cell size in world units
 
   // Player starting position and properties
-  Offset playerPos = Offset(160, 160);
+  Offset playerPos = Offset(96, 96); // Starting in the first room
   double playerAngle = 0; // in radians
   double rotSpeed = pi / 2; // radians per second
 
@@ -237,8 +422,8 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Initialize background music
     await _initializeBackgroundMusic();
 
-    // Preload bullet shot sound
-    await _loadBulletShotSound();
+    // Preload sound effects
+    await _preloadSoundEffects();
 
     // Generate brick texture
     brickTexture = await _generateBrickTexture();
@@ -252,18 +437,61 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     gunTexture = await _loadGunTexture();
     gunTextureLoaded = true;
 
-    // Add a variety of enemies in different positions with different colors
-    enemies.add(Enemy(const Offset(320, 320), 30, color: Colors.red));
-    enemies.add(Enemy(const Offset(480, 480), 35, color: Colors.blue.shade800));
-    enemies
-        .add(Enemy(const Offset(300, 480), 40, color: Colors.green.shade800));
-    enemies
-        .add(Enemy(const Offset(420, 220), 25, color: Colors.purple.shade800));
-    enemies
-        .add(Enemy(const Offset(200, 400), 38, color: Colors.orange.shade800));
+    // Load health and ammo icons
+    healthIcon = await _loadImage('assets/images/health.png');
+    ammoIcon = await _loadImage('assets/images/ammo.png');
+
+    // Add enemies at strategic positions across the map
+    // Room 1 - Top left area
+    enemies.add(Enemy(const Offset(160, 352), 30));
+
+    // Room 2 - Top right area
+    enemies.add(Enemy(const Offset(1088, 160), 35));
+
+    // Room 3 - Middle area
+    enemies.add(Enemy(const Offset(480, 480), 32));
+
+    // Room 4 - Bottom right area
+    enemies.add(Enemy(const Offset(1088, 1088), 36));
+
+    // Room 5 - Bottom left area
+    enemies.add(Enemy(const Offset(224, 928), 28));
+
+    // Corridor guards
+    enemies.add(Enemy(const Offset(480, 736), 33));
+    enemies.add(Enemy(const Offset(800, 544), 31));
+
+    // More enemies based on difficulty
+    if (difficulty >= 1) {
+      enemies.add(Enemy(const Offset(352, 672), 34));
+      enemies.add(Enemy(const Offset(928, 800), 29));
+    }
+
+    // Even more enemies on hard difficulty
+    if (difficulty >= 2) {
+      enemies.add(Enemy(const Offset(640, 192), 37));
+      enemies.add(Enemy(const Offset(800, 928), 30));
+      enemies.add(Enemy(const Offset(320, 480), 35));
+    }
+
+    // Generate patrol paths for some enemies
+    for (Enemy enemy in enemies) {
+      if (Random().nextDouble() < 0.7) {
+        enemy.generatePatrolPoints(map, cellSize);
+      }
+    }
 
     // Spawn some initial items
     _spawnItems();
+  }
+
+  // Load an image from assets
+  Future<ui.Image> _loadImage(String assetPath) async {
+    final ByteData data = await rootBundle.load(assetPath);
+    final Uint8List bytes = data.buffer.asUint8List();
+    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+    final ui.FrameInfo fi = await codec.getNextFrame();
+    return fi.image;
   }
 
   // Initialize and start background music
@@ -405,6 +633,11 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
   @override
   void render(Canvas canvas) {
     final size = canvasSize;
+
+    // Apply screen shake effect
+    if (screenShakeDuration > 0) {
+      canvas.translate(screenShakeOffset.dx, screenShakeOffset.dy);
+    }
 
     // Clear screen with a dark background
     canvas.drawRect(
@@ -548,9 +781,57 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
     // Draw damage indicator when hurt
     if (damageIndicatorTime > 0) {
+      // Red flash with opacity based on damage amount and time remaining
+      double opacity = damageIndicatorTime * min(0.7, lastDamageAmount / 30.0);
       canvas.drawRect(
         Rect.fromLTWH(0, 0, size.x, size.y),
-        Paint()..color = Colors.red.withOpacity(damageIndicatorTime * 0.5),
+        Paint()..color = Colors.red.withOpacity(opacity),
+      );
+    }
+
+    // Draw blood overlay effect (more realistic gore effect)
+    if (bloodOverlayOpacity > 0) {
+      // Draw blood splatter at edges of screen
+      final bloodPaint = Paint()
+        ..color = Colors.red.shade900.withOpacity(bloodOverlayOpacity);
+
+      // Add some random blood drips at the top
+      if (bloodOverlayOpacity > 0.3) {
+        final Random rnd = Random();
+        final bloodPath = Path();
+
+        for (int i = 0; i < 8; i++) {
+          double startX = rnd.nextDouble() * size.x;
+          double length = 20.0 + rnd.nextDouble() * 100;
+
+          bloodPath.moveTo(startX, 0);
+          bloodPath.lineTo(startX - 5 + rnd.nextDouble() * 10, length);
+          bloodPath.lineTo(startX + 10, length);
+          bloodPath.lineTo(startX + 5, 0);
+          bloodPath.close();
+        }
+
+        canvas.drawPath(bloodPath, bloodPaint);
+      }
+
+      // Add vignette effect that gets stronger as health decreases
+      final healthFactor = 1.0 - (health / 100.0);
+      final vignetteRect = Rect.fromLTWH(0, 0, size.x, size.y);
+      final vignetteRadius = size.x * 0.8 * (1.0 - healthFactor * 0.5);
+
+      final vignetteGradient = RadialGradient(
+        center: Alignment.center,
+        radius: 1.0,
+        colors: [
+          Colors.transparent,
+          Colors.red.shade900.withOpacity(bloodOverlayOpacity * 0.7),
+        ],
+        stops: [0.6 * (1.0 - healthFactor * 0.3), 1.0],
+      );
+
+      canvas.drawRect(
+        vignetteRect,
+        Paint()..shader = vignetteGradient.createShader(vignetteRect),
       );
     }
 
@@ -619,12 +900,28 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       restartPainter.layout(minWidth: size.x);
       restartPainter.paint(canvas, Offset(0, size.y / 2 + 50));
     }
+
+    // Draw controls panel at the top of the screen - drawn last so it stays on top
+    if (showControls) {
+      _drawControlsPanel(canvas, size);
+    }
   }
 
   // Draw enemies as sprites in the 3D view
   void _drawEnemies(
       Canvas canvas, Vector2 size, List<double> zBuffer, double fov) {
-    for (Enemy enemy in enemies) {
+    // Sort enemies by distance for proper rendering order (furthest first)
+    List<Enemy> sortedEnemies = List.from(enemies);
+    sortedEnemies.sort((a, b) {
+      double distA = sqrt(pow(a.position.dx - playerPos.dx, 2) +
+          pow(a.position.dy - playerPos.dy, 2));
+      double distB = sqrt(pow(b.position.dx - playerPos.dx, 2) +
+          pow(b.position.dy - playerPos.dy, 2));
+      // Sort in descending order (furthest first)
+      return distB.compareTo(distA);
+    });
+
+    for (Enemy enemy in sortedEnemies) {
       if (!enemy.alive) continue;
 
       // Vector from player to enemy
@@ -641,35 +938,60 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       while (angle > pi) angle -= 2 * pi;
       while (angle < -pi) angle += 2 * pi;
 
-      // Check if enemy is in field of view (with some buffer)
-      if (angle.abs() > fov / 2 + 0.2) continue;
+      // Check if enemy is in field of view (with larger buffer)
+      // Added extra buffer for better visibility when aiming
+      if (angle.abs() > fov / 2 + 0.3) continue;
 
       // Calculate screen position
       double screenX = (size.x / 2) + tan(angle) * (size.x / 2);
 
-      // Calculate sprite height based on distance
+      // Calculate sprite height based on distance and enemy size
       double spriteHeight = size.y / distance * enemy.size;
 
-      // Only render if in front of a wall
-      if (screenX >= 0 && screenX < size.x) {
-        int screenXInt = screenX.toInt();
-        if (distance < zBuffer[screenXInt]) {
-          // Determine sprite width based on height (keep ratio)
-          double spriteWidth = spriteHeight * 0.6;
+      // Ensure the sprite has a minimum height for visibility
+      spriteHeight = max(spriteHeight, 20.0);
 
+      // Calculate sprite width based on height (keep ratio)
+      double spriteWidth = spriteHeight * 0.6;
+
+      // Ensure the sprite has a minimum width for visibility
+      spriteWidth = max(spriteWidth, 12.0);
+
+      // The range of x-coordinates the sprite will occupy on screen
+      int spriteLeftX = (screenX - spriteWidth / 2).floor();
+      int spriteRightX = (screenX + spriteWidth / 2).ceil();
+
+      // Ensure sprite is fully visible by clamping to screen boundaries
+      if (spriteLeftX < 0) spriteLeftX = 0;
+      if (spriteRightX >= size.x) spriteRightX = size.x.toInt() - 1;
+
+      // Loop through each vertical strip of the sprite
+      for (int x = spriteLeftX; x <= spriteRightX; x++) {
+        // Only render if in front of a wall and within screen bounds
+        if (x >= 0 && x < size.x && distance < zBuffer[x]) {
           // Calculate top position of sprite
           double spriteTop = size.y / 2 - spriteHeight / 2;
 
-          // Create rectangle for enemy
-          final enemyRect = Rect.fromLTWH(
-            screenX - spriteWidth / 2,
+          // Create rectangle for this vertical slice of the enemy
+          final double sliceWidth = 1.0; // Width of one vertical slice
+          final enemySliceRect = Rect.fromLTWH(
+            x.toDouble(),
             spriteTop,
-            spriteWidth,
+            sliceWidth,
             spriteHeight,
           );
 
+          // Calculate the relative position within the sprite texture
+          final double texturePosX =
+              (x - spriteLeftX) / (spriteRightX - spriteLeftX);
+          final Rect srcRect = Rect.fromLTWH(
+              texturePosX * enemyTexture!.width,
+              0,
+              enemyTexture!.width / (spriteRightX - spriteLeftX),
+              enemyTexture!.height.toDouble());
+
           if (enemyTextureLoaded && enemyTexture != null) {
-            // Draw enemy using the loaded image
+            // Create paint with appropriate effects
             final paint = Paint();
 
             // If enemy is hit, tint the sprite red
@@ -695,46 +1017,46 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
                   BlendMode.modulate);
             }
 
-            // Draw the image
+            // Draw the image slice
             canvas.drawImageRect(
               enemyTexture!,
-              Rect.fromLTWH(0, 0, enemyTexture!.width.toDouble(),
-                  enemyTexture!.height.toDouble()),
-              enemyRect,
+              srcRect,
+              enemySliceRect,
               paint,
             );
           } else {
             // Fallback to drawing soldier if texture isn't loaded
-            _drawSoldierEnemy(canvas, enemyRect, enemy, distance);
-          }
-
-          // Draw health bar above enemy
-          _drawEnemyHealthBar(
-              canvas,
-              enemy,
-              Offset(screenX - spriteWidth / 2,
-                  spriteTop - 10 - (spriteHeight * 0.05) // Position above enemy
-                  ),
-              spriteWidth);
-
-          // Draw muzzle flash if enemy is shooting
-          if (enemy.isShooting && enemy.shootAnimTime < 0.2) {
-            final flashPaint = Paint()..color = Colors.orange;
-            final innerFlashPaint = Paint()..color = Colors.yellow;
-
-            // Position muzzle flash at the end of the rifle
-            double flashX =
-                screenX + spriteWidth * 0.3; // Adjust based on your enemy image
-            double flashY = spriteTop +
-                spriteHeight * 0.4; // Adjust based on your enemy image
-
-            canvas.drawCircle(
-                Offset(flashX, flashY), spriteWidth * 0.1, flashPaint);
-
-            canvas.drawCircle(
-                Offset(flashX, flashY), spriteWidth * 0.05, innerFlashPaint);
+            _drawSoldierEnemy(canvas, enemySliceRect, enemy, distance);
           }
         }
+      }
+
+      // Draw health bar above enemy
+      double spriteTop = size.y / 2 - spriteHeight / 2;
+      _drawEnemyHealthBar(
+          canvas,
+          enemy,
+          Offset(screenX - spriteWidth / 2,
+              spriteTop - 10 - (spriteHeight * 0.05) // Position above enemy
+              ),
+          spriteWidth);
+
+      // Draw muzzle flash if enemy is shooting
+      if (enemy.isShooting && enemy.shootAnimTime < 0.2) {
+        final flashPaint = Paint()..color = Colors.orange;
+        final innerFlashPaint = Paint()..color = Colors.yellow;
+
+        // Position muzzle flash at the end of the rifle
+        double flashX =
+            screenX + spriteWidth * 0.3; // Adjust based on your enemy image
+        double flashY =
+            spriteTop + spriteHeight * 0.4; // Adjust based on your enemy image
+
+        canvas.drawCircle(
+            Offset(flashX, flashY), spriteWidth * 0.1, flashPaint);
+
+        canvas.drawCircle(
+            Offset(flashX, flashY), spriteWidth * 0.05, innerFlashPaint);
       }
     }
   }
@@ -1151,6 +1473,43 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Check if background music needs to be restarted
     _checkBackgroundMusic();
 
+    // Handle screen shake timing
+    if (screenShakeDuration > 0) {
+      screenShakeDuration -= dt;
+      if (screenShakeDuration <= 0) {
+        screenShakeOffset = Offset.zero;
+      } else {
+        // Update screen shake effect
+        double intensity = screenShakeIntensity *
+            (screenShakeDuration / screenShakeMaxDuration);
+        screenShakeOffset = Offset(
+            Random().nextDouble() * intensity * 2 - intensity,
+            Random().nextDouble() * intensity * 2 - intensity);
+      }
+    }
+
+    // Handle controls fade timer
+    if (!controlsAlwaysOn && controlsFadeTimer > 0) {
+      controlsFadeTimer -= dt;
+      if (controlsFadeTimer <= 0) {
+        showControls = false;
+      }
+    }
+
+    // Reset controls timer on movement to make controls appear again
+    if (!showControls &&
+        (keysPressed.contains(LogicalKeyboardKey.arrowUp) ||
+            keysPressed.contains(LogicalKeyboardKey.keyW) ||
+            keysPressed.contains(LogicalKeyboardKey.arrowDown) ||
+            keysPressed.contains(LogicalKeyboardKey.keyS) ||
+            keysPressed.contains(LogicalKeyboardKey.arrowLeft) ||
+            keysPressed.contains(LogicalKeyboardKey.keyA) ||
+            keysPressed.contains(LogicalKeyboardKey.arrowRight) ||
+            keysPressed.contains(LogicalKeyboardKey.keyD))) {
+      showControls = true;
+      controlsFadeTimer = 5.0;
+    }
+
     // Process input for player movement.
     if (keysPressed.contains(LogicalKeyboardKey.arrowUp) ||
         keysPressed.contains(LogicalKeyboardKey.keyW)) {
@@ -1195,6 +1554,12 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       damageIndicatorTime -= dt;
     }
 
+    // Update blood overlay effect
+    if (bloodOverlayOpacity > 0) {
+      bloodOverlayOpacity -= dt * 0.3; // Fade out gradually
+      if (bloodOverlayOpacity < 0) bloodOverlayOpacity = 0;
+    }
+
     // Update items
     _updateItems(dt);
 
@@ -1204,16 +1569,17 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Update enemies
     _updateEnemies(dt);
 
-    // Check for collisions with walls
+    // Check collisions with walls
     checkCollision();
 
-    // Check for collisions with enemies
+    // Check collisions with enemies
     checkEnemyCollisions();
+  }
 
-    // Check if player is dead
-    if (health <= 0 && !gameOver) {
-      gameOver = true;
-    }
+  // Add a screen shake effect when player takes damage
+  void addScreenShake(double amount) {
+    screenShakeIntensity = amount.clamp(0, 20); // Limit max intensity
+    screenShakeDuration = screenShakeMaxDuration;
   }
 
   // Check and ensure background music is playing
@@ -1305,6 +1671,9 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       // Increment last seen player time
       enemy.lastSeenPlayerTime += dt;
 
+      // Increment patrol timer
+      enemy.patrolTimer += dt;
+
       // Handle enemy hit animation
       if (enemy.hit) {
         enemy.hitTime += dt;
@@ -1329,23 +1698,139 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
         enemy.shootCooldown -= dt;
       }
 
-      // Enemy AI
+      // Check if enemy can hear player shooting
+      if (isShooting) {
+        enemy.canHearPlayer(playerPos, isShooting);
+      }
+
+      // Gradually reduce alertness over time
+      if (enemy.alertness > 0 && !enemy.alerted) {
+        enemy.alertness = max(0, enemy.alertness - dt * 0.05);
+      }
+
+      // Enemy AI state machine
       bool canSee = enemy.canSeePlayer(playerPos, map, cellSize);
 
-      // Check if enemy can shoot or move
+      // Main enemy behavior states
       if (canSee) {
         // Enemy can see player
         if (enemy.shootCooldown <= 0) {
           // Try to shoot
           _enemyShoot(enemy);
         }
-      } else if (enemy.isAggressive && enemy.lastSeenPlayerTime < 5.0) {
-        // Aggressive enemy who lost sight of player recently will hunt
-        enemy.moveTowards(enemy.lastKnownPlayerPos, dt, map, cellSize);
-      } else if (Random().nextDouble() < 0.01) {
+
+        // Combat movement - different behaviors based on enemy type
+        double preferredDistance = 0;
+
+        switch (enemy.enemyType) {
+          case 'soldier':
+            // Soldiers try to maintain medium distance
+            preferredDistance = 200;
+            break;
+          case 'heavy':
+            // Heavy enemies try to get closer
+            preferredDistance = 150;
+            break;
+          case 'scout':
+            // Scouts prefer to stay at a distance
+            preferredDistance = 300;
+            break;
+        }
+
+        // Calculate current distance to player
+        double dx = playerPos.dx - enemy.position.dx;
+        double dy = playerPos.dy - enemy.position.dy;
+        double distanceToPlayer = sqrt(dx * dx + dy * dy);
+
+        // If too close, back away
+        if (distanceToPlayer < preferredDistance * 0.7) {
+          // Move away from player
+          Offset retreatPos = Offset(
+              enemy.position.dx - dx * 0.5, enemy.position.dy - dy * 0.5);
+          enemy.moveTowards(retreatPos, dt, map, cellSize);
+        }
+        // If too far, approach
+        else if (distanceToPlayer > preferredDistance * 1.3) {
+          // Move towards player
+          double approachFactor = enemy.enemyType == 'scout' ? 0.7 : 1.0;
+          Offset approachPos = Offset(playerPos.dx - dx * 0.2 * approachFactor,
+              playerPos.dy - dy * 0.2 * approachFactor);
+          enemy.moveTowards(approachPos, dt, map, cellSize);
+        }
+        // If at good distance, strafe
+        else if (Random().nextDouble() < 0.02) {
+          // Random strafing movement perpendicular to player
+          double strafeAngle =
+              atan2(dy, dx) + (Random().nextBool() ? pi / 2 : -pi / 2);
+          double strafeDist = 30 + Random().nextDouble() * 30;
+
+          Offset strafePos = Offset(
+              enemy.position.dx + cos(strafeAngle) * strafeDist,
+              enemy.position.dy + sin(strafeAngle) * strafeDist);
+          enemy.moveTowards(strafePos, dt, map, cellSize);
+        }
+      } else if (enemy.alerted && enemy.lastSeenPlayerTime < 7.0) {
+        // Enemy lost sight but is still alerted - search behavior
+
+        // Move to last known position first
+        double dx = enemy.lastKnownPlayerPos.dx - enemy.position.dx;
+        double dy = enemy.lastKnownPlayerPos.dy - enemy.position.dy;
+        double distToLastSeen = sqrt(dx * dx + dy * dy);
+
+        if (distToLastSeen > 20) {
+          // Still moving to last seen position
+          enemy.moveTowards(enemy.lastKnownPlayerPos, dt, map, cellSize);
+        } else {
+          // At last seen position, look around
+          enemy.patrolTimer += dt;
+
+          // Change direction every 2 seconds
+          if (enemy.patrolTimer > 2.0) {
+            enemy.patrolTimer = 0;
+            enemy.currentAngle += (Random().nextDouble() - 0.5) * pi;
+          }
+
+          // Move in current facing direction
+          Offset searchPos = Offset(
+              enemy.position.dx + cos(enemy.currentAngle) * 40,
+              enemy.position.dy + sin(enemy.currentAngle) * 40);
+          enemy.moveTowards(searchPos, dt, map, cellSize);
+        }
+
+        // Gradually reduce alert status
+        if (enemy.lastSeenPlayerTime > 5.0) {
+          enemy.alerted = false;
+        }
+      } else if (enemy.isAggressive && enemy.patrolPoints.isEmpty) {
+        // Generate patrol points for aggressive enemies
+        enemy.generatePatrolPoints(map, cellSize);
+      } else if (!enemy.patrolPoints.isEmpty) {
+        // Patrol behavior - move between patrol points
+        if (enemy.currentPatrolPoint >= enemy.patrolPoints.length) {
+          enemy.currentPatrolPoint = 0;
+        }
+
+        Offset target = enemy.patrolPoints[enemy.currentPatrolPoint];
+        enemy.moveTowards(target, dt, map, cellSize);
+
+        // Check if reached patrol point
+        double dx = target.dx - enemy.position.dx;
+        double dy = target.dy - enemy.position.dy;
+        double distToTarget = sqrt(dx * dx + dy * dy);
+
+        if (distToTarget < 10) {
+          // Move to next patrol point
+          enemy.currentPatrolPoint =
+              (enemy.currentPatrolPoint + 1) % enemy.patrolPoints.length;
+
+          // Pause at waypoint
+          enemy.patrolTimer = 0;
+        }
+      } else if (Random().nextDouble() < 0.008) {
         // Random movement occasionally
         double randomAngle = Random().nextDouble() * 2 * pi;
-        double moveDistance = 30; // How far to move
+        double moveDistance =
+            30 + Random().nextDouble() * 30; // How far to move
 
         Offset target = Offset(
             enemy.position.dx + cos(randomAngle) * moveDistance,
@@ -1356,7 +1841,7 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     }
 
     // Spawn new enemies if few remain
-    if (enemies.length < 3 && Random().nextDouble() < 0.005) {
+    if (enemies.length < 5 && Random().nextDouble() < 0.003) {
       _spawnNewEnemy();
     }
   }
@@ -1379,14 +1864,19 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
         double dy = pos.dy - playerPos.dy;
         double distanceToPlayer = sqrt(dx * dx + dy * dy);
 
-        if (distanceToPlayer > 200) {
+        if (distanceToPlayer > 300) {
           // Not too close to player
-          // Create enemy with random color
-          Color color = Colors
-              .primaries[random.nextInt(Colors.primaries.length)]
-              .withOpacity(0.8);
+          // Create enemy with appropriate properties
+          Enemy newEnemy = Enemy(pos, 30 + random.nextDouble() * 15);
 
-          enemies.add(Enemy(pos, 30 + random.nextDouble() * 15, color: color));
+          // Add to enemies list
+          enemies.add(newEnemy);
+
+          // Generate patrol points
+          if (random.nextDouble() < 0.7) {
+            newEnemy.generatePatrolPoints(map, cellSize);
+          }
+
           break;
         }
       }
@@ -1399,39 +1889,127 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Start shooting animation
     enemy.isShooting = true;
     enemy.shootAnimTime = 0;
-    enemy.shootCooldown =
-        1.0 + Random().nextDouble() * 2.0; // 1-3 second cooldown
+
+    // Cooldown time depends on enemy type
+    double baseCooldown = 0;
+    switch (enemy.enemyType) {
+      case 'soldier':
+        baseCooldown = 1.5; // Standard cooldown
+        break;
+      case 'heavy':
+        baseCooldown = 2.5; // Slower firing rate
+        break;
+      case 'scout':
+        baseCooldown = 1.0; // Faster firing rate
+        break;
+    }
+
+    // Add randomization to cooldown
+    enemy.shootCooldown = baseCooldown + Random().nextDouble() * 1.0;
 
     // Vector from enemy to player
     double dx = playerPos.dx - enemy.position.dx;
     double dy = playerPos.dy - enemy.position.dy;
     double distance = sqrt(dx * dx + dy * dy);
 
-    // Base hit chance depends on distance
-    double hitChance = 1.0 - (distance / 500); // 100% at 0 distance, 0% at 500+
-    hitChance = hitChance.clamp(0.2, 0.9); // Min 20%, max 90% hit chance
+    // Base hit chance depends on distance and enemy type
+    double accuracyFactor = 0;
+    switch (enemy.enemyType) {
+      case 'soldier':
+        accuracyFactor = 1.0; // Standard accuracy
+        break;
+      case 'heavy':
+        accuracyFactor = 0.8; // Less accurate
+        break;
+      case 'scout':
+        accuracyFactor = 1.2; // More accurate
+        break;
+    }
+
+    // Player movement reduces enemy accuracy
+    bool playerMoving = keysPressed.contains(LogicalKeyboardKey.arrowUp) ||
+        keysPressed.contains(LogicalKeyboardKey.keyW) ||
+        keysPressed.contains(LogicalKeyboardKey.arrowDown) ||
+        keysPressed.contains(LogicalKeyboardKey.keyS);
+
+    if (playerMoving) {
+      accuracyFactor *= 0.8; // 20% accuracy reduction when player is moving
+    }
+
+    // Calculate final hit chance
+    double hitChance = (1.0 - (distance / 500)) * accuracyFactor;
+    hitChance = hitChance.clamp(0.1, 0.9); // Min 10%, max 90% hit chance
 
     // Check if enemy hits the player
     if (Random().nextDouble() < hitChance) {
       // Player is hit, reduce health
-      // Damage increases the closer the enemy is
-      int baseDamage = 10;
-      double distanceFactor = 1.0 - (distance / 500).clamp(0.0, 0.8);
-      int damageBoost =
-          (distanceFactor * 15).round(); // Up to +15 damage at close range
+      // Damage depends on enemy type and distance
+      int baseDamage = 0;
+      switch (enemy.enemyType) {
+        case 'soldier':
+          baseDamage = 10; // Standard damage
+          break;
+        case 'heavy':
+          baseDamage = 15; // More damage
+          break;
+        case 'scout':
+          baseDamage = 7; // Less damage
+          break;
+      }
 
-      int damage = baseDamage +
-          damageBoost +
-          Random().nextInt(5); // 10-30 damage per hit
+      // Distance modifier - closer enemies do more damage
+      double distanceFactor = 1.0 - (distance / 500).clamp(0.0, 0.8);
+      int damageBoost = (distanceFactor * 10).round();
+
+      // Calculate final damage with randomization
+      int damage = baseDamage + damageBoost + Random().nextInt(5);
+
+      // Difficulty affects damage taken
+      if (difficulty == 0) {
+        // Easy
+        damage = (damage * 0.7).round(); // 30% damage reduction
+      } else if (difficulty == 2) {
+        // Hard
+        damage = (damage * 1.3).round(); // 30% damage increase
+      }
+
+      // Handle critical hits (10% chance)
+      bool isCritical = Random().nextDouble() < 0.1;
+      if (isCritical) {
+        damage = (damage * 1.5).round(); // Critical hit does 50% more damage
+      }
 
       // Apply damage
       health = max(0, health - damage);
 
-      // Set damage indicator
-      damageIndicatorTime = 0.5; // Show damage indicator for 0.5 seconds
+      // Set damage indicator with longer duration for more damage
+      double indicatorDuration =
+          0.5 + (damage / 50.0); // Up to 1 second for high damage
+      damageIndicatorTime = min(indicatorDuration, 1.0);
       lastDamageAmount = damage.toDouble();
 
-      // Screen shake could be added here
+      // Add screen shake effect based on damage amount
+      addScreenShake(damage * 0.3);
+
+      // Add blood overlay effect
+      bloodOverlayOpacity = min(0.7, bloodOverlayOpacity + damage * 0.02);
+
+      // Play hit sound (if available)
+      _playSoundEffect('hit', volume: 0.3);
+
+      // Show visual damage indicators based on health
+      // This is handled in HUD and screen effects
+
+      // Check for game over
+      if (health <= 0) {
+        gameOver = true;
+        // Could add death sound here
+      }
+    } else {
+      // Enemy missed - show near miss effect if very close
+      if (hitChance > 0.7) {
+        // Near miss - could add visual cue or sound
+      }
     }
   }
 
@@ -1440,10 +2018,28 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Reset player state
     health = 100;
     ammo = 50;
-    playerPos = Offset(160, 160);
+    playerPos = Offset(96, 96); // Starting position in first room
     playerAngle = 0;
     score = 0;
     gameOver = false;
+
+    // Set difficulty-specific parameters
+    if (difficulty == 0) {
+      // Easy
+      health = 150;
+      ammo = 100;
+      moveSpeed = 120;
+    } else if (difficulty == 1) {
+      // Medium
+      health = 100;
+      ammo = 50;
+      moveSpeed = 100;
+    } else if (difficulty == 2) {
+      // Hard
+      health = 75;
+      ammo = 30;
+      moveSpeed = 90;
+    }
 
     // Check if music needs to be restarted
     if (!backgroundMusicPlaying && main_app.audioInitialized) {
@@ -1457,14 +2053,46 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
     // Clear and respawn enemies
     enemies.clear();
-    enemies.add(Enemy(const Offset(320, 320), 30, color: Colors.red));
-    enemies.add(Enemy(const Offset(480, 480), 35, color: Colors.blue.shade800));
-    enemies
-        .add(Enemy(const Offset(300, 480), 40, color: Colors.green.shade800));
-    enemies
-        .add(Enemy(const Offset(420, 220), 25, color: Colors.purple.shade800));
-    enemies
-        .add(Enemy(const Offset(200, 400), 38, color: Colors.orange.shade800));
+
+    // Add enemies at strategic positions across the map
+    // Room 1 - Top left area
+    enemies.add(Enemy(const Offset(160, 352), 30));
+
+    // Room 2 - Top right area
+    enemies.add(Enemy(const Offset(1088, 160), 35));
+
+    // Room 3 - Middle area
+    enemies.add(Enemy(const Offset(480, 480), 32));
+
+    // Room 4 - Bottom right area
+    enemies.add(Enemy(const Offset(1088, 1088), 36));
+
+    // Room 5 - Bottom left area
+    enemies.add(Enemy(const Offset(224, 928), 28));
+
+    // Corridor guards
+    enemies.add(Enemy(const Offset(480, 736), 33));
+    enemies.add(Enemy(const Offset(800, 544), 31));
+
+    // More enemies based on difficulty
+    if (difficulty >= 1) {
+      enemies.add(Enemy(const Offset(352, 672), 34));
+      enemies.add(Enemy(const Offset(928, 800), 29));
+    }
+
+    // Even more enemies on hard difficulty
+    if (difficulty >= 2) {
+      enemies.add(Enemy(const Offset(640, 192), 37));
+      enemies.add(Enemy(const Offset(800, 928), 30));
+      enemies.add(Enemy(const Offset(320, 480), 35));
+    }
+
+    // Generate patrol paths for some enemies
+    for (Enemy enemy in enemies) {
+      if (Random().nextDouble() < 0.7) {
+        enemy.generatePatrolPoints(map, cellSize);
+      }
+    }
 
     // Reset items
     items.clear();
@@ -1675,12 +2303,91 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     final centerX = size.x / 2;
     final centerY = size.y / 2;
 
+    // Check if crosshair is over an enemy
+    bool isOverEnemy = false;
+    double distanceToEnemy = double.infinity;
+
+    // Cast a ray from the center of the screen
+    double rayAngle = playerAngle;
+    for (double distance = 0; distance < 500; distance += 5) {
+      double rayX = playerPos.dx + cos(rayAngle) * distance;
+      double rayY = playerPos.dy + sin(rayAngle) * distance;
+
+      // Check for wall hit
+      int mapX = (rayX / cellSize).toInt();
+      int mapY = (rayY / cellSize).toInt();
+
+      if (mapX < 0 ||
+          mapX >= mapWidth ||
+          mapY < 0 ||
+          mapY >= mapHeight ||
+          map[mapY][mapX] == 1) {
+        break; // Hit a wall or out of bounds
+      }
+
+      // Check for enemy hit
+      for (Enemy enemy in enemies) {
+        if (!enemy.alive) continue;
+
+        double dx = enemy.position.dx - rayX;
+        double dy = enemy.position.dy - rayY;
+        double distToEnemy = sqrt(dx * dx + dy * dy);
+
+        if (distToEnemy < enemy.size / 2 + 5) {
+          isOverEnemy = true;
+          distanceToEnemy = sqrt(pow(enemy.position.dx - playerPos.dx, 2) +
+              pow(enemy.position.dy - playerPos.dy, 2));
+          break;
+        }
+      }
+
+      if (isOverEnemy) break;
+    }
+
+    // Determine crosshair color - red when over enemy, white otherwise
+    final Color crosshairColor = isOverEnemy ? Colors.red : Colors.white;
+
+    // Add a subtle pulse animation when aiming at an enemy
+    double crosshairSize = 10.0; // Base size
+    double strokeWidth = 2.0;
+
+    if (isOverEnemy) {
+      // Calculate size based on enemy distance (closer = larger crosshair)
+      double distanceFactor = 1.0 - min(1.0, distanceToEnemy / 500);
+      crosshairSize = 10.0 + (distanceFactor * 5.0);
+      strokeWidth = 2.0 + (distanceFactor * 1.5);
+    }
+
+    // Add a slight spread indication when moving or recently shot
+    if (isShooting) {
+      crosshairSize += 6.0 * (1.0 - min(1.0, shootAnimTime / 0.3));
+    }
+
     // Configure crosshair style
     final crosshairPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2;
+      ..color = crosshairColor
+      ..strokeWidth = strokeWidth;
 
-    final crosshairSize = 10.0; // Size of the crosshair
+    // Create a subtle glow effect when over an enemy
+    if (isOverEnemy) {
+      // First draw a larger, transparent crosshair for the glow effect
+      final glowPaint = Paint()
+        ..color = Colors.red.withOpacity(0.3)
+        ..strokeWidth = strokeWidth + 2.0;
+
+      // Draw glow crosshair
+      canvas.drawLine(
+        Offset(centerX - crosshairSize - 4, centerY),
+        Offset(centerX + crosshairSize + 4, centerY),
+        glowPaint,
+      );
+
+      canvas.drawLine(
+        Offset(centerX, centerY - crosshairSize - 4),
+        Offset(centerX, centerY + crosshairSize + 4),
+        glowPaint,
+      );
+    }
 
     // Draw crosshair lines
     // Horizontal line
@@ -1697,12 +2404,43 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       crosshairPaint,
     );
 
-    // Draw a small circle in the center (optional)
+    // Draw a small circle in the center
     canvas.drawCircle(
       Offset(centerX, centerY),
-      2,
+      isOverEnemy ? 3 : 2,
       crosshairPaint,
     );
+
+    // Add aiming dots around the circle for better precision
+    if (isOverEnemy) {
+      final double dotRadius = 1.5;
+      final double dotDistance = crosshairSize * 0.5;
+
+      // Draw 4 small dots around the center in a diamond pattern
+      canvas.drawCircle(
+        Offset(centerX + dotDistance, centerY),
+        dotRadius,
+        crosshairPaint,
+      );
+
+      canvas.drawCircle(
+        Offset(centerX - dotDistance, centerY),
+        dotRadius,
+        crosshairPaint,
+      );
+
+      canvas.drawCircle(
+        Offset(centerX, centerY + dotDistance),
+        dotRadius,
+        crosshairPaint,
+      );
+
+      canvas.drawCircle(
+        Offset(centerX, centerY - dotDistance),
+        dotRadius,
+        crosshairPaint,
+      );
+    }
   }
 
   // Draw enemy health bar
@@ -1775,8 +2513,6 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
   // Check collisions with enemies
   void checkEnemyCollisions() {
-    double collisionDistance = 30; // Distance to detect collision
-
     for (Enemy enemy in enemies) {
       if (!enemy.alive) continue;
 
@@ -1784,14 +2520,89 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       double dy = enemy.position.dy - playerPos.dy;
       double distance = sqrt(dx * dx + dy * dy);
 
-      if (distance < collisionDistance) {
-        // Take damage from enemy collision
-        health = max(0, health - 1);
+      // Base collision distance depends on enemy type
+      double baseCollisionDistance = 30;
+      double damageMultiplier = 1.0;
 
-        // Push player back
-        playerPos = Offset(
-            playerPos.dx - dx / distance * 5, playerPos.dy - dy / distance * 5);
+      switch (enemy.enemyType) {
+        case 'soldier':
+          baseCollisionDistance = 30; // Standard
+          damageMultiplier = 1.0;
+          break;
+        case 'heavy':
+          baseCollisionDistance = 35; // Larger
+          damageMultiplier = 1.5; // More damage
+          break;
+        case 'scout':
+          baseCollisionDistance = 25; // Smaller
+          damageMultiplier = 0.8; // Less damage
+          break;
       }
+
+      // Apply damage based on collision distance
+      if (distance < baseCollisionDistance) {
+        // Determine damage based on enemy type and difficulty
+        int baseMeleeDamage = (5 * damageMultiplier).round();
+
+        // Adjust for difficulty
+        if (difficulty == 0) {
+          // Easy
+          baseMeleeDamage = (baseMeleeDamage * 0.7).round();
+        } else if (difficulty == 2) {
+          // Hard
+          baseMeleeDamage = (baseMeleeDamage * 1.3).round();
+        }
+
+        // Additional damage if enemy is rushing at player
+        if (enemy.alerted) {
+          baseMeleeDamage = (baseMeleeDamage * 1.2).round();
+        }
+
+        // Apply damage
+        health = max(0, health - baseMeleeDamage);
+        damageIndicatorTime = 0.3; // Short flash for melee damage
+        lastDamageAmount = baseMeleeDamage.toDouble();
+
+        // Add screen shake for melee hit
+        addScreenShake(baseMeleeDamage * 0.5); // More intense for melee
+
+        // Add blood overlay effect
+        bloodOverlayOpacity =
+            min(0.7, bloodOverlayOpacity + baseMeleeDamage * 0.03);
+
+        // Push player back based on enemy type
+        double pushForce = (enemy.enemyType == 'heavy') ? 8.0 : 5.0;
+        playerPos = Offset(playerPos.dx - dx / distance * pushForce,
+            playerPos.dy - dy / distance * pushForce);
+
+        // Also push enemy back slightly (except for heavy type)
+        if (enemy.enemyType != 'heavy') {
+          enemy.position = Offset(enemy.position.dx + dx / distance * 3.0,
+              enemy.position.dy + dy / distance * 3.0);
+        }
+
+        // Make enemy alerted after contact
+        enemy.alerted = true;
+
+        // Play collision sound
+        _playSoundEffect('collision', volume: 0.3);
+      }
+
+      // Proximity awareness - enemies become alerted when player is very close
+      else if (distance < baseCollisionDistance * 3 && !enemy.alerted) {
+        // Chance to notice player based on distance
+        double noticeChance = 1.0 - (distance / (baseCollisionDistance * 3));
+
+        if (Random().nextDouble() < noticeChance) {
+          enemy.alerted = true;
+          enemy.lastKnownPlayerPos = playerPos;
+        }
+      }
+    }
+
+    // Check if game over from damage
+    if (health <= 0) {
+      gameOver = true;
     }
   }
 
@@ -1815,6 +2626,16 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       toggleBackgroundMusic();
     }
 
+    // Toggle controls visibility with H key
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyH) {
+      controlsAlwaysOn = !controlsAlwaysOn;
+      if (controlsAlwaysOn) {
+        showControls = true;
+      } else {
+        controlsFadeTimer = 5.0; // Start fade timer when toggled off
+      }
+    }
+
     return KeyEventResult.handled;
   }
 
@@ -1835,7 +2656,7 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     }
 
     // Play bullet shot sound
-    _playBulletShotSound();
+    _playSoundEffect('shoot', volume: 0.5);
 
     // Reduce ammo and set cooldown
     ammo--;
@@ -1846,71 +2667,93 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Calculate shooting range
     final double shootRange = 500;
 
-    // The ray always goes straight ahead from the crosshair
+    // Track if we've hit anything
+    bool hitSomething = false;
+
+    // The ray goes straight ahead from the crosshair (player's angle)
     double rayAngle = playerAngle;
 
-    // Cast the ray
-    for (double distance = 0; distance < shootRange; distance += 5) {
-      double rayX = playerPos.dx + cos(rayAngle) * distance;
-      double rayY = playerPos.dy + sin(rayAngle) * distance;
-      int mapX = (rayX / cellSize).toInt();
-      int mapY = (rayY / cellSize).toInt();
+    // Add a small spread for more forgiving hit detection
+    // We'll cast 3 rays: one straight ahead and two slightly offset
+    List<double> angleOffsets = [
+      -0.05,
+      0.0,
+      0.05
+    ]; // Small angle offsets in radians
 
-      // Check for wall hit
-      if (mapX < 0 || mapX >= mapWidth || mapY < 0 || mapY >= mapHeight) {
-        break; // Out of bounds
-      }
+    // Try each ray with slight angle variations
+    for (double angleOffset in angleOffsets) {
+      if (hitSomething) break; // Stop if we already hit something
 
-      if (map[mapY][mapX] == 1) {
-        break; // Hit a wall
-      }
+      double currentAngle = rayAngle + angleOffset;
 
-      // Check for enemy hit
-      for (Enemy enemy in enemies) {
-        if (!enemy.alive) continue;
+      // Cast the ray
+      for (double distance = 0; distance < shootRange; distance += 5) {
+        double rayX = playerPos.dx + cos(currentAngle) * distance;
+        double rayY = playerPos.dy + sin(currentAngle) * distance;
+        int mapX = (rayX / cellSize).toInt();
+        int mapY = (rayY / cellSize).toInt();
 
-        // Calculate distance to enemy at this point
-        double dx = enemy.position.dx - rayX;
-        double dy = enemy.position.dy - rayY;
-        double distToEnemy = sqrt(dx * dx + dy * dy);
+        // Check for wall hit
+        if (mapX < 0 || mapX >= mapWidth || mapY < 0 || mapY >= mapHeight) {
+          break; // Out of bounds
+        }
 
-        // Check if ray is close enough to enemy center to count as a hit
-        // This creates a circular hitbox around the enemy
-        if (distToEnemy < enemy.size / 2) {
-          // Hit enemy
-          enemy.hit = true;
-          enemy.hitTime = 0;
+        if (map[mapY][mapX] == 1) {
+          break; // Hit a wall
+        }
 
-          // Calculate damage based on distance from player (closer = more damage)
-          double playerToEnemyDist = sqrt(
-              pow(enemy.position.dx - playerPos.dx, 2) +
-                  pow(enemy.position.dy - playerPos.dy, 2));
+        // Check for enemy hit with improved detection
+        for (Enemy enemy in enemies) {
+          if (!enemy.alive) continue;
 
-          int damage = 30 + Random().nextInt(20); // Base damage 30-50
+          // Calculate distance to enemy at this point
+          double dx = enemy.position.dx - rayX;
+          double dy = enemy.position.dy - rayY;
+          double distToEnemy = sqrt(dx * dx + dy * dy);
 
-          // Apply distance modifier (up to 40% reduction at max range)
-          double distanceModifier =
-              1.0 - (playerToEnemyDist / shootRange * 0.4);
-          damage = (damage * distanceModifier).round();
+          // Use a slightly larger hitbox for better hit detection
+          double hitboxSize = enemy.size / 2 +
+              5; // Adding 5 units for more forgiving hit detection
 
-          // Apply the damage
-          enemy.health = max(0, enemy.health - damage);
+          // Check if ray is close enough to enemy center to count as a hit
+          if (distToEnemy < hitboxSize) {
+            // Hit enemy
+            enemy.hit = true;
+            enemy.hitTime = 0;
+            hitSomething = true;
 
-          // Check if enemy died
-          if (enemy.health <= 0 && enemy.alive) {
-            enemy.alive = false;
-            score += 100; // Award 100 points for a kill
+            // Calculate damage based on distance from player (closer = more damage)
+            double playerToEnemyDist = sqrt(
+                pow(enemy.position.dx - playerPos.dx, 2) +
+                    pow(enemy.position.dy - playerPos.dy, 2));
 
-            // Chance to drop an item
-            if (Random().nextDouble() < 0.3) {
-              // 30% chance
-              ItemType itemType =
-                  Random().nextBool() ? ItemType.healthPack : ItemType.ammo;
-              items.add(Item(enemy.position, itemType));
+            int damage = 30 + Random().nextInt(20); // Base damage 30-50
+
+            // Apply distance modifier (up to 40% reduction at max range)
+            double distanceModifier =
+                1.0 - (playerToEnemyDist / shootRange * 0.4);
+            damage = (damage * distanceModifier).round();
+
+            // Apply the damage
+            enemy.health = max(0, enemy.health - damage);
+
+            // Check if enemy died
+            if (enemy.health <= 0 && enemy.alive) {
+              enemy.alive = false;
+              score += 100; // Award 100 points for a kill
+
+              // Chance to drop an item
+              if (Random().nextDouble() < 0.3) {
+                // 30% chance
+                ItemType itemType =
+                    Random().nextBool() ? ItemType.healthPack : ItemType.ammo;
+                items.add(Item(enemy.position, itemType));
+              }
             }
-          }
 
-          return; // End the function after hitting an enemy
+            return; // End the function after hitting an enemy
+          }
         }
       }
     }
@@ -1937,14 +2780,37 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Draw pixelated stats
     final statWidth = size.x / 5;
 
-    // AMMO display
-    _drawPixelatedNumber(
-      canvas,
-      '$ammo',
-      Offset(margin, size.y - hudHeight + margin),
-      Colors.red,
-      large: true,
-    );
+    // AMMO display with icon
+    if (ammoIcon != null) {
+      // Draw ammo icon
+      final iconSize = 32.0;
+      final iconRect = Rect.fromLTWH(
+          margin, size.y - hudHeight + margin, iconSize, iconSize);
+      canvas.drawImageRect(
+          ammoIcon!,
+          Rect.fromLTWH(
+              0, 0, ammoIcon!.width.toDouble(), ammoIcon!.height.toDouble()),
+          iconRect,
+          Paint());
+
+      // Draw ammo count
+      _drawPixelatedNumber(
+        canvas,
+        '$ammo',
+        Offset(margin + iconSize + 5, size.y - hudHeight + margin + 5),
+        Colors.red,
+        large: true,
+      );
+    } else {
+      // Fallback if icon not loaded
+      _drawPixelatedNumber(
+        canvas,
+        '$ammo',
+        Offset(margin, size.y - hudHeight + margin),
+        Colors.red,
+        large: true,
+      );
+    }
     _drawStatusLabel(
       canvas,
       'AMMO',
@@ -1952,14 +2818,38 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       Colors.grey,
     );
 
-    // HEALTH display
-    _drawPixelatedNumber(
-      canvas,
-      '$health%',
-      Offset(statWidth + margin, size.y - hudHeight + margin),
-      Colors.red,
-      large: true,
-    );
+    // HEALTH display with icon
+    if (healthIcon != null) {
+      // Draw health icon
+      final iconSize = 32.0;
+      final iconRect = Rect.fromLTWH(
+          statWidth + margin, size.y - hudHeight + margin, iconSize, iconSize);
+      canvas.drawImageRect(
+          healthIcon!,
+          Rect.fromLTWH(0, 0, healthIcon!.width.toDouble(),
+              healthIcon!.height.toDouble()),
+          iconRect,
+          Paint());
+
+      // Draw health count
+      _drawPixelatedNumber(
+        canvas,
+        '$health%',
+        Offset(
+            statWidth + margin + iconSize + 5, size.y - hudHeight + margin + 5),
+        Colors.red,
+        large: true,
+      );
+    } else {
+      // Fallback if icon not loaded
+      _drawPixelatedNumber(
+        canvas,
+        '$health%',
+        Offset(statWidth + margin, size.y - hudHeight + margin),
+        Colors.red,
+        large: true,
+      );
+    }
     _drawStatusLabel(
       canvas,
       'HEALTH',
@@ -2312,99 +3202,180 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     }
   }
 
-  // Load bullet shot sound
-  Future<void> _loadBulletShotSound() async {
+  // Preload all sound effects
+  Future<void> _preloadSoundEffects() async {
     try {
-      print('Loading bullet shot sound...');
-      await FlameAudio.audioCache.load('Bullet Shot.mp3');
+      // Get list of available sounds from our map
+      final Map<String, String> availableSounds = {
+        'shoot': 'Bullet Shot.mp3',
+        'hit': 'Bullet Shot.mp3',
+        'step': 'footstepMain.mp3',
+        'collision': 'footstepMain.mp3',
+      };
+
+      // Preload each sound
+      for (String soundFile in availableSounds.values.toSet()) {
+        try {
+          await FlameAudio.audioCache.load(soundFile);
+          print('Loaded sound: $soundFile');
+        } catch (e) {
+          print('Failed to load sound $soundFile: $e');
+        }
+      }
+
       bulletSoundLoaded = true;
-      print('Bullet shot sound loaded successfully');
     } catch (e) {
-      print('Error loading bullet shot sound: $e');
+      print('Error in sound preloading: $e');
       bulletSoundLoaded = false;
     }
   }
 
-  // Play bullet shot sound with realistic effects
-  void _playBulletShotSound() {
-    if (bulletSoundLoaded) {
-      try {
-        // Play the main bullet shot sound at full volume with slight randomization
-        double mainVolume = 0.8 + (Random().nextDouble() * 0.2);
+  // Play a sound effect safely with fallback
+  void _playSoundEffect(String soundName, {double volume = 0.5}) {
+    // List of available sounds
+    final Map<String, String> availableSounds = {
+      'shoot': 'Bullet Shot.mp3',
+      'hit': 'Bullet Shot.mp3', // Reuse for hit sound
+      'step': 'footstepMain.mp3',
+      'collision': 'footstepMain.mp3', // Reuse for collision
+    };
 
-        // Special sound effect for last bullet or low ammo
-        bool isLastBullet = ammo <= 1;
-        bool isLowAmmo = ammo <= 5;
+    // Check if the requested sound exists
+    final String? soundFile = availableSounds[soundName];
+    if (soundFile == null) {
+      return; // No sound to play
+    }
 
-        // Play the main gunshot
-        FlameAudio.play('Bullet Shot.mp3', volume: mainVolume);
-
-        // Add echo effect for indoor environment
-        // Echo is delayed and quieter
-        Future.delayed(Duration(milliseconds: 150), () {
-          double echoVolume =
-              mainVolume * 0.3; // Echo is 30% of original volume
-          FlameAudio.play('Bullet Shot.mp3', volume: echoVolume);
-        });
-
-        // Check if player is in an enclosed space
-        bool isEnclosed = _isPlayerInEnclosedSpace();
-
-        // Add additional echo if in enclosed space
-        if (isEnclosed) {
-          Future.delayed(Duration(milliseconds: 300), () {
-            double secondEchoVolume =
-                mainVolume * 0.15; // Second echo even quieter
-            FlameAudio.play('Bullet Shot.mp3', volume: secondEchoVolume);
-          });
-        }
-
-        // Add gun cocking sound for realism (using same sound at low volume with delay)
-        Future.delayed(Duration(milliseconds: 250), () {
-          // Louder cocking sound for last bullet for dramatic effect
-          double cockingVolume = isLastBullet ? 0.3 : (isLowAmmo ? 0.2 : 0.1);
-          FlameAudio.play('Bullet Shot.mp3', volume: cockingVolume);
-        });
-
-        // Add a special "click" sound when it's the last bullet
-        if (isLastBullet) {
-          Future.delayed(Duration(milliseconds: 400), () {
-            FlameAudio.play('Bullet Shot.mp3', volume: 0.15);
-          });
-        }
-
-        print('Bullet shot sound played with effects');
-      } catch (e) {
-        print('Error playing bullet shot sound: $e');
-      }
+    // Try to play the sound
+    try {
+      FlameAudio.play(soundFile, volume: volume);
+    } catch (e) {
+      print('Error playing sound $soundName: $e');
     }
   }
 
-  // Check if player is in an enclosed space for echo effects
-  bool _isPlayerInEnclosedSpace() {
-    // Cast rays in multiple directions to see if walls are close
-    int numDirections = 8;
-    int wallsDetected = 0;
-    double checkDistance = 100; // Distance to check for walls
+  // Draw controls panel at the top of the screen
+  void _drawControlsPanel(Canvas canvas, Vector2 size) {
+    // Controls panel styling - DOOM style
+    final panelHeight = 32.0;
+    final panelWidth = size.x;
 
-    for (int i = 0; i < numDirections; i++) {
-      double angle = i * (2 * pi / numDirections);
-      double rayX = playerPos.dx + cos(angle) * checkDistance;
-      double rayY = playerPos.dy + sin(angle) * checkDistance;
-      int mapX = (rayX / cellSize).toInt();
-      int mapY = (rayY / cellSize).toInt();
+    // DOOM-style dark panel with slight transparency
+    final panelPaint = Paint()..color = Color.fromRGBO(20, 20, 20, 0.85);
 
-      // Check if out of bounds or if there's a wall
-      if (mapX < 0 ||
-          mapX >= mapWidth ||
-          mapY < 0 ||
-          mapY >= mapHeight ||
-          map[mapY][mapX] == 1) {
-        wallsDetected++;
+    // Red accent border like classic DOOM UI
+    final borderPaint = Paint()
+      ..color = Colors.red.shade900
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // Draw panel background
+    final panelRect = Rect.fromLTWH(0, 0, panelWidth, panelHeight);
+    canvas.drawRect(panelRect, panelPaint);
+
+    // Draw bottom border only for that classic DOOM look
+    canvas.drawLine(
+      Offset(0, panelHeight),
+      Offset(panelWidth, panelHeight),
+      borderPaint,
+    );
+
+    // Controls text styling - pixelated look
+    final TextStyle controlsStyle = TextStyle(
+      color: Colors.grey.shade400,
+      fontSize: 14,
+      fontWeight: FontWeight.bold,
+      letterSpacing: 0.5, // Slightly spaced out like old games
+      fontFamily: 'monospace', // Closest to pixelated look with system fonts
+    );
+
+    // Controls text content with DOOM-style capitalization
+    final List<String> controls = [
+      "MOVE: W/A/S/D",
+      "TURN: ARROWS",
+      "FIRE: SPACE/CLICK",
+      "MUSIC: M",
+      "CONTROLS: H"
+    ];
+
+    // Calculate spacing between controls
+    final double spacing = panelWidth / controls.length;
+
+    // Draw each control text
+    for (int i = 0; i < controls.length; i++) {
+      // Draw text with slight shadow for that 90s look
+      final TextSpan shadowSpan = TextSpan(
+        text: controls[i],
+        style: controlsStyle.copyWith(
+          color: Colors.black.withOpacity(0.8),
+        ),
+      );
+
+      final TextPainter shadowPainter = TextPainter(
+        text: shadowSpan,
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      );
+
+      shadowPainter.layout();
+
+      // Draw shadow slightly offset
+      final double xPosition =
+          spacing * i + (spacing - shadowPainter.width) / 2;
+      shadowPainter.paint(
+          canvas,
+          Offset(
+              xPosition + 1, panelHeight / 2 - shadowPainter.height / 2 + 1));
+
+      // Draw actual text
+      final TextSpan controlSpan = TextSpan(
+        text: controls[i],
+        style: controlsStyle,
+      );
+
+      final TextPainter controlPainter = TextPainter(
+        text: controlSpan,
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      );
+
+      controlPainter.layout();
+      controlPainter.paint(canvas,
+          Offset(xPosition, panelHeight / 2 - controlPainter.height / 2));
+
+      // Add separator between controls except after the last one
+      if (i < controls.length - 1) {
+        final separatorPaint = Paint()
+          ..color = Colors.red.shade900.withOpacity(0.6)
+          ..strokeWidth = 1;
+
+        canvas.drawLine(
+          Offset(spacing * (i + 1), 6),
+          Offset(spacing * (i + 1), panelHeight - 6),
+          separatorPaint,
+        );
       }
     }
 
-    // If more than half of directions have walls, consider it enclosed
-    return wallsDetected > numDirections / 2;
+    // Add status indicator in the corner if controls are pinned
+    if (controlsAlwaysOn) {
+      final pinIndicatorText = TextSpan(
+        text: "PINNED",
+        style: TextStyle(
+          color: Colors.red.shade400,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+
+      final pinPainter = TextPainter(
+        text: pinIndicatorText,
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.right,
+      );
+
+      pinPainter.layout();
+      pinPainter.paint(canvas, Offset(panelWidth - pinPainter.width - 5, 4));
+    }
   }
 }
