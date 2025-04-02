@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
+import 'package:flame_audio/flame_audio.dart'; // Import flame_audio for sound
+import 'package:doom_flutter/main.dart'
+    as main_app; // Import this at the top of the file
 
 // Simple enemy class
 class Enemy {
@@ -157,6 +160,10 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
   double lastDamageAmount = 0; // Amount of last damage taken
   double moveSpeed = 100; // units per second
 
+  // Audio state
+  bool backgroundMusicPlaying = false;
+  bool bulletSoundLoaded = false;
+
   // Wall texture
   ui.Image? brickTexture;
   bool textureLoaded = false;
@@ -227,6 +234,12 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
   Future<void> onLoad() async {
     await super.onLoad();
 
+    // Initialize background music
+    await _initializeBackgroundMusic();
+
+    // Preload bullet shot sound
+    await _loadBulletShotSound();
+
     // Generate brick texture
     brickTexture = await _generateBrickTexture();
     textureLoaded = true;
@@ -251,6 +264,39 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
     // Spawn some initial items
     _spawnItems();
+  }
+
+  // Initialize and start background music
+  Future<void> _initializeBackgroundMusic() async {
+    try {
+      print('Checking background music status in game...');
+
+      // Check global audio state from main.dart
+      if (main_app.audioInitialized) {
+        // Music is already playing from the home screen, just set the flag
+        backgroundMusicPlaying = true;
+        print('Music already playing from home screen, continuing playback');
+      } else {
+        // Music not started yet, start it now
+        print('Starting background music in game...');
+        await FlameAudio.bgm.play('backgroundMusic.mp3', volume: 0.7);
+        backgroundMusicPlaying = true;
+        main_app.audioInitialized = true;
+        print('Background music started in game');
+      }
+    } catch (e) {
+      print('Error with background music in game: $e');
+      backgroundMusicPlaying = false;
+    }
+  }
+
+  @override
+  void onRemove() {
+    // Stop any music or sounds when game is closed
+    if (backgroundMusicPlaying) {
+      FlameAudio.bgm.stop();
+    }
+    super.onRemove();
   }
 
   // Spawn items randomly in the map
@@ -496,6 +542,9 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
     // Draw crosshair in the center of the screen
     _drawCrosshair(canvas, size);
+
+    // Draw DOOM-style HUD at the bottom
+    _drawDoomHUD(canvas, size);
 
     // Draw damage indicator when hurt
     if (damageIndicatorTime > 0) {
@@ -1099,6 +1148,9 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       return;
     }
 
+    // Check if background music needs to be restarted
+    _checkBackgroundMusic();
+
     // Process input for player movement.
     if (keysPressed.contains(LogicalKeyboardKey.arrowUp) ||
         keysPressed.contains(LogicalKeyboardKey.keyW)) {
@@ -1161,6 +1213,31 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     // Check if player is dead
     if (health <= 0 && !gameOver) {
       gameOver = true;
+    }
+  }
+
+  // Check and ensure background music is playing
+  void _checkBackgroundMusic() {
+    if (!backgroundMusicPlaying) {
+      // Try to start background music again if it's not playing
+      try {
+        print('Restarting background music in game...');
+        FlameAudio.bgm.play('backgroundMusic.mp3', volume: 0.7);
+        backgroundMusicPlaying = true;
+      } catch (e) {
+        print('Failed to restart background music: $e');
+      }
+    }
+  }
+
+  // Toggle background music on/off
+  void toggleBackgroundMusic() {
+    if (backgroundMusicPlaying) {
+      FlameAudio.bgm.stop();
+      backgroundMusicPlaying = false;
+    } else {
+      FlameAudio.bgm.play('backgroundMusic.mp3', volume: 0.7);
+      backgroundMusicPlaying = true;
     }
   }
 
@@ -1358,7 +1435,7 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     }
   }
 
-  // Restart the game
+  // Restart game with music
   void _restartGame() {
     // Reset player state
     health = 100;
@@ -1367,6 +1444,16 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     playerAngle = 0;
     score = 0;
     gameOver = false;
+
+    // Check if music needs to be restarted
+    if (!backgroundMusicPlaying && main_app.audioInitialized) {
+      // Music was previously playing but stopped
+      FlameAudio.bgm.play('backgroundMusic.mp3', volume: 0.7);
+      backgroundMusicPlaying = true;
+    } else if (!backgroundMusicPlaying && !main_app.audioInitialized) {
+      // First time playing after restart
+      _initializeBackgroundMusic();
+    }
 
     // Clear and respawn enemies
     enemies.clear();
@@ -1723,33 +1810,41 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       }
     }
 
+    // Toggle music with M key
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyM) {
+      toggleBackgroundMusic();
+    }
+
     return KeyEventResult.handled;
   }
 
   @override
   void onTapDown(TapDownInfo info) {
-    // Handle mouse click to shoot
-    if (!gameOver && shootCooldown <= 0) {
+    if (gameOver) {
+      _restartGame();
+    } else if (shootCooldown <= 0) {
+      // Play shooting sound and perform shooting
       shootEnemy();
     }
   }
 
   // Shoot at enemies in front of the player
   void shootEnemy() {
-    if (ammo <= 0) return; // No ammo left
-    if (isShooting) return; // Already shooting
+    if (ammo <= 0 || shootCooldown > 0) {
+      return;
+    }
 
-    // Start shooting animation
+    // Play bullet shot sound
+    _playBulletShotSound();
+
+    // Reduce ammo and set cooldown
+    ammo--;
+    shootCooldown = 0.5; // Half a second cooldown between shots
     isShooting = true;
-    shootAnimTime = 0;
+    shootAnimTime = 0.3; // Animation time for muzzle flash
 
-    // Set cooldown between shots
-    shootCooldown = 0.4; // 0.4 seconds between shots
-
-    ammo--; // Use one ammo
-
-    // Cast a ray directly in front of the player (centered on the crosshair)
-    double shootRange = 500; // Extended shooting distance
+    // Calculate shooting range
+    final double shootRange = 500;
 
     // The ray always goes straight ahead from the crosshair
     double rayAngle = playerAngle;
@@ -1819,5 +1914,497 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
         }
       }
     }
+  }
+
+  // Add this method to draw the pixelated DOOM HUD
+  void _drawDoomHUD(Canvas canvas, Vector2 size) {
+    const double hudHeight = 80;
+    const double margin = 10;
+
+    // Draw black background for HUD
+    final hudRect = Rect.fromLTWH(0, size.y - hudHeight, size.x, hudHeight);
+    canvas.drawRect(hudRect, Paint()..color = Colors.black);
+
+    // Draw divider line
+    canvas.drawLine(
+      Offset(0, size.y - hudHeight),
+      Offset(size.x, size.y - hudHeight),
+      Paint()
+        ..color = Colors.grey.shade800
+        ..strokeWidth = 3,
+    );
+
+    // Draw pixelated stats
+    final statWidth = size.x / 5;
+
+    // AMMO display
+    _drawPixelatedNumber(
+      canvas,
+      '$ammo',
+      Offset(margin, size.y - hudHeight + margin),
+      Colors.red,
+      large: true,
+    );
+    _drawStatusLabel(
+      canvas,
+      'AMMO',
+      Offset(margin, size.y - 18),
+      Colors.grey,
+    );
+
+    // HEALTH display
+    _drawPixelatedNumber(
+      canvas,
+      '$health%',
+      Offset(statWidth + margin, size.y - hudHeight + margin),
+      Colors.red,
+      large: true,
+    );
+    _drawStatusLabel(
+      canvas,
+      'HEALTH',
+      Offset(statWidth + margin, size.y - 18),
+      Colors.grey,
+    );
+
+    // Draw weapon slots (3x3 grid)
+    final double weaponGridLeft = statWidth * 2 + margin;
+    final double weaponGridTop = size.y - hudHeight + margin;
+    final double cellSize = (hudHeight - margin * 2) / 3;
+
+    for (int row = 0; row < 3; row++) {
+      for (int col = 0; col < 3; col++) {
+        final weaponSlot = row * 3 + col + 1;
+        final cellRect = Rect.fromLTWH(
+          weaponGridLeft + col * cellSize,
+          weaponGridTop + row * cellSize,
+          cellSize - 2,
+          cellSize - 2,
+        );
+
+        // Draw cell background
+        canvas.drawRect(
+          cellRect,
+          Paint()..color = Colors.grey.shade800,
+        );
+
+        // Draw weapon number
+        TextPainter textPainter = TextPainter(
+          text: TextSpan(
+            text: '$weaponSlot',
+            style: TextStyle(
+              color: Colors.yellow,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            cellRect.left + (cellRect.width - textPainter.width) / 2,
+            cellRect.top + (cellRect.height - textPainter.height) / 2,
+          ),
+        );
+      }
+    }
+
+    // Face display in the center
+    final faceSize = hudHeight - margin * 2;
+    final faceRect = Rect.fromLTWH(
+      (size.x - faceSize) / 2,
+      size.y - hudHeight + margin,
+      faceSize,
+      faceSize,
+    );
+
+    // Draw face background
+    canvas.drawRect(
+      faceRect,
+      Paint()..color = Colors.grey.shade900,
+    );
+
+    // Draw face - changes based on health
+    _drawDoomFace(canvas, faceRect, health);
+
+    // ARMOR display
+    final armorValue = 0; // You can add armor as a game mechanic later
+    _drawPixelatedNumber(
+      canvas,
+      '$armorValue%',
+      Offset(size.x - statWidth - margin - 40, size.y - hudHeight + margin),
+      Colors.red,
+      large: true,
+    );
+    _drawStatusLabel(
+      canvas,
+      'ARMOR',
+      Offset(size.x - statWidth - margin - 40, size.y - 18),
+      Colors.grey,
+    );
+
+    // Draw stats like ammo types
+    final double rightStatsX = size.x - margin - 80;
+    final double rightStatsY = size.y - hudHeight + margin;
+
+    _drawStatusLabel(
+        canvas, 'BULL', Offset(rightStatsX, rightStatsY), Colors.grey);
+    _drawStatusLabel(
+        canvas, 'SHEL', Offset(rightStatsX, rightStatsY + 15), Colors.grey);
+    _drawStatusLabel(
+        canvas, 'RCKT', Offset(rightStatsX, rightStatsY + 30), Colors.grey);
+    _drawStatusLabel(
+        canvas, 'CELL', Offset(rightStatsX, rightStatsY + 45), Colors.grey);
+
+    _drawStatusLabel(canvas, '80 / 200', Offset(rightStatsX + 50, rightStatsY),
+        Colors.yellow);
+    _drawStatusLabel(canvas, '0 / 50',
+        Offset(rightStatsX + 50, rightStatsY + 15), Colors.yellow);
+    _drawStatusLabel(canvas, '0 / 50',
+        Offset(rightStatsX + 50, rightStatsY + 30), Colors.yellow);
+    _drawStatusLabel(canvas, '0 / 300',
+        Offset(rightStatsX + 50, rightStatsY + 45), Colors.yellow);
+  }
+
+  // Draw DOOM style pixelated numbers
+  void _drawPixelatedNumber(
+      Canvas canvas, String text, Offset position, Color color,
+      {bool large = false}) {
+    final fontSize = large ? 32.0 : 16.0;
+    final TextPainter textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'monospace',
+          letterSpacing: -1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+
+    // Draw drop shadow
+    final TextPainter shadowPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: fontSize,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'monospace',
+          letterSpacing: -1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    shadowPainter.layout();
+    shadowPainter.paint(canvas, position.translate(2, 2));
+
+    // Draw main text
+    textPainter.paint(canvas, position);
+  }
+
+  // Draw status label text
+  void _drawStatusLabel(
+      Canvas canvas, String text, Offset position, Color color) {
+    final TextPainter textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'monospace',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+    textPainter.paint(canvas, position);
+  }
+
+  // Draw DOOM face based on health
+  void _drawDoomFace(Canvas canvas, Rect rect, int health) {
+    final Paint facePaint = Paint()
+      ..color = const Color(0xFFFFC78F); // Skin tone
+
+    // Draw base face
+    canvas.drawRect(rect.deflate(2), facePaint);
+
+    // Draw eyes
+    final eyeWidth = rect.width * 0.15;
+    final eyeHeight = rect.height * 0.15;
+    final leftEyeRect = Rect.fromLTWH(
+      rect.left + rect.width * 0.25 - eyeWidth / 2,
+      rect.top + rect.height * 0.3 - eyeHeight / 2,
+      eyeWidth,
+      eyeHeight,
+    );
+
+    final rightEyeRect = Rect.fromLTWH(
+      rect.left + rect.width * 0.75 - eyeWidth / 2,
+      rect.top + rect.height * 0.3 - eyeHeight / 2,
+      eyeWidth,
+      eyeHeight,
+    );
+
+    // Eye expressions change based on health
+    if (health > 75) {
+      // Normal eyes
+      canvas.drawRect(leftEyeRect, Paint()..color = Colors.black);
+      canvas.drawRect(rightEyeRect, Paint()..color = Colors.black);
+
+      // Happy mouth
+      final mouthPath = Path();
+      mouthPath.moveTo(
+          rect.left + rect.width * 0.3, rect.top + rect.height * 0.7);
+      mouthPath.lineTo(
+          rect.left + rect.width * 0.45, rect.top + rect.height * 0.8);
+      mouthPath.lineTo(
+          rect.left + rect.width * 0.55, rect.top + rect.height * 0.8);
+      mouthPath.lineTo(
+          rect.left + rect.width * 0.7, rect.top + rect.height * 0.7);
+
+      canvas.drawPath(
+          mouthPath,
+          Paint()
+            ..color = Colors.black
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3);
+    } else if (health > 50) {
+      // Concerned eyes
+      canvas.drawRect(leftEyeRect, Paint()..color = Colors.black);
+      canvas.drawRect(rightEyeRect, Paint()..color = Colors.black);
+
+      // Neutral mouth
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rect.left + rect.width * 0.3,
+          rect.top + rect.height * 0.75,
+          rect.width * 0.4,
+          rect.height * 0.05,
+        ),
+        Paint()..color = Colors.black,
+      );
+    } else if (health > 25) {
+      // Hurt eyes (x shape)
+      final leftEyePaint = Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+
+      canvas.drawLine(
+        Offset(leftEyeRect.left, leftEyeRect.top),
+        Offset(leftEyeRect.right, leftEyeRect.bottom),
+        leftEyePaint,
+      );
+
+      canvas.drawLine(
+        Offset(leftEyeRect.left, leftEyeRect.bottom),
+        Offset(leftEyeRect.right, leftEyeRect.top),
+        leftEyePaint,
+      );
+
+      canvas.drawLine(
+        Offset(rightEyeRect.left, rightEyeRect.top),
+        Offset(rightEyeRect.right, rightEyeRect.bottom),
+        leftEyePaint,
+      );
+
+      canvas.drawLine(
+        Offset(rightEyeRect.left, rightEyeRect.bottom),
+        Offset(rightEyeRect.right, rightEyeRect.top),
+        leftEyePaint,
+      );
+
+      // Grimace mouth
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rect.left + rect.width * 0.3,
+          rect.top + rect.height * 0.75,
+          rect.width * 0.4,
+          rect.height * 0.1,
+        ),
+        Paint()..color = Colors.black,
+      );
+
+      // Blood drips
+      final bloodPaint = Paint()..color = Colors.red.shade900;
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rect.left + rect.width * 0.4,
+          rect.top + rect.height * 0.5,
+          rect.width * 0.05,
+          rect.height * 0.2,
+        ),
+        bloodPaint,
+      );
+
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rect.left + rect.width * 0.6,
+          rect.top + rect.height * 0.45,
+          rect.width * 0.05,
+          rect.height * 0.15,
+        ),
+        bloodPaint,
+      );
+    } else {
+      // Near death - red eyes
+      canvas.drawRect(leftEyeRect, Paint()..color = Colors.red);
+      canvas.drawRect(rightEyeRect, Paint()..color = Colors.red);
+
+      // Grimace mouth with blood
+      final mouthRect = Rect.fromLTWH(
+        rect.left + rect.width * 0.25,
+        rect.top + rect.height * 0.7,
+        rect.width * 0.5,
+        rect.height * 0.15,
+      );
+
+      canvas.drawRect(mouthRect, Paint()..color = Colors.red.shade900);
+
+      // More blood drips
+      final bloodPaint = Paint()..color = Colors.red.shade900;
+      for (int i = 0; i < 5; i++) {
+        final xPos = rect.left + rect.width * (0.3 + i * 0.1);
+        final height = rect.height * (0.1 + i % 3 * 0.05);
+
+        canvas.drawRect(
+          Rect.fromLTWH(
+            xPos,
+            rect.top,
+            rect.width * 0.05,
+            height,
+          ),
+          bloodPaint,
+        );
+      }
+
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rect.left + rect.width * 0.4,
+          rect.top + rect.height * 0.5,
+          rect.width * 0.05,
+          rect.height * 0.2,
+        ),
+        bloodPaint,
+      );
+
+      canvas.drawRect(
+        Rect.fromLTWH(
+          rect.left + rect.width * 0.6,
+          rect.top + rect.height * 0.45,
+          rect.width * 0.08,
+          rect.height * 0.25,
+        ),
+        bloodPaint,
+      );
+    }
+  }
+
+  // Load bullet shot sound
+  Future<void> _loadBulletShotSound() async {
+    try {
+      print('Loading bullet shot sound...');
+      await FlameAudio.audioCache.load('Bullet Shot.mp3');
+      bulletSoundLoaded = true;
+      print('Bullet shot sound loaded successfully');
+    } catch (e) {
+      print('Error loading bullet shot sound: $e');
+      bulletSoundLoaded = false;
+    }
+  }
+
+  // Play bullet shot sound with realistic effects
+  void _playBulletShotSound() {
+    if (bulletSoundLoaded) {
+      try {
+        // Play the main bullet shot sound at full volume with slight randomization
+        double mainVolume = 0.8 + (Random().nextDouble() * 0.2);
+
+        // Special sound effect for last bullet or low ammo
+        bool isLastBullet = ammo <= 1;
+        bool isLowAmmo = ammo <= 5;
+
+        // Play the main gunshot
+        FlameAudio.play('Bullet Shot.mp3', volume: mainVolume);
+
+        // Add echo effect for indoor environment
+        // Echo is delayed and quieter
+        Future.delayed(Duration(milliseconds: 150), () {
+          double echoVolume =
+              mainVolume * 0.3; // Echo is 30% of original volume
+          FlameAudio.play('Bullet Shot.mp3', volume: echoVolume);
+        });
+
+        // Check if player is in an enclosed space
+        bool isEnclosed = _isPlayerInEnclosedSpace();
+
+        // Add additional echo if in enclosed space
+        if (isEnclosed) {
+          Future.delayed(Duration(milliseconds: 300), () {
+            double secondEchoVolume =
+                mainVolume * 0.15; // Second echo even quieter
+            FlameAudio.play('Bullet Shot.mp3', volume: secondEchoVolume);
+          });
+        }
+
+        // Add gun cocking sound for realism (using same sound at low volume with delay)
+        Future.delayed(Duration(milliseconds: 250), () {
+          // Louder cocking sound for last bullet for dramatic effect
+          double cockingVolume = isLastBullet ? 0.3 : (isLowAmmo ? 0.2 : 0.1);
+          FlameAudio.play('Bullet Shot.mp3', volume: cockingVolume);
+        });
+
+        // Add a special "click" sound when it's the last bullet
+        if (isLastBullet) {
+          Future.delayed(Duration(milliseconds: 400), () {
+            FlameAudio.play('Bullet Shot.mp3', volume: 0.15);
+          });
+        }
+
+        print('Bullet shot sound played with effects');
+      } catch (e) {
+        print('Error playing bullet shot sound: $e');
+      }
+    }
+  }
+
+  // Check if player is in an enclosed space for echo effects
+  bool _isPlayerInEnclosedSpace() {
+    // Cast rays in multiple directions to see if walls are close
+    int numDirections = 8;
+    int wallsDetected = 0;
+    double checkDistance = 100; // Distance to check for walls
+
+    for (int i = 0; i < numDirections; i++) {
+      double angle = i * (2 * pi / numDirections);
+      double rayX = playerPos.dx + cos(angle) * checkDistance;
+      double rayY = playerPos.dy + sin(angle) * checkDistance;
+      int mapX = (rayX / cellSize).toInt();
+      int mapY = (rayY / cellSize).toInt();
+
+      // Check if out of bounds or if there's a wall
+      if (mapX < 0 ||
+          mapX >= mapWidth ||
+          mapY < 0 ||
+          mapY >= mapHeight ||
+          map[mapY][mapX] == 1) {
+        wallsDetected++;
+      }
+    }
+
+    // If more than half of directions have walls, consider it enclosed
+    return wallsDetected > numDirections / 2;
   }
 }
