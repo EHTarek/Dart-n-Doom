@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:flame_audio/flame_audio.dart'; // Import flame_audio for sound
 import 'package:doom_flutter/main.dart'
     as main_app; // Import this at the top of the file
+import 'presentation/widgets/game_container.dart'; // Import GameContainer widget
 
 // Simple enemy class
 class Enemy {
@@ -300,10 +301,9 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: GameWidget(
-        game: DoomCloneGame(username: username, difficulty: difficulty),
-      ),
+    return GameContainer(
+      username: username,
+      difficulty: difficulty,
     );
   }
 }
@@ -377,8 +377,8 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     [1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   ];
-  final int mapWidth = 20;
-  final int mapHeight = 20;
+  int mapWidth = 20;
+  int mapHeight = 20;
   final double cellSize = 64; // Each map cell size in world units
 
   // Player starting position and properties
@@ -392,9 +392,17 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
   // List of enemies
   List<Enemy> enemies = [];
 
+  // Mobile control state
+  bool usingMobileControls = false;
+  double mobileMoveDx = 0;
+  double mobileMoveDy = 0;
+  bool mobileAttacking = false;
+  bool isMobile = false;
+
   DoomCloneGame({
     required this.username,
     required this.difficulty,
+    this.isMobile = false,
   }) {
     // Adjust game difficulty based on the provided level
     if (difficulty == 0) {
@@ -412,6 +420,28 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       health = 75;
       ammo = 30;
       moveSpeed = 90;
+    }
+
+    // Use a smaller map for mobile devices
+    if (isMobile) {
+      // Use a smaller map for mobile
+      map.clear();
+      map.addAll([
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        [1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1],
+        [1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1],
+        [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        [1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1],
+        [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1],
+        [1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1],
+        [1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1],
+        [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        [1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      ]);
+      mapWidth = 12;
+      mapHeight = 12;
     }
   }
 
@@ -441,37 +471,59 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
     healthIcon = await _loadImage('assets/images/health.png');
     ammoIcon = await _loadImage('assets/images/ammo.png');
 
-    // Add enemies at strategic positions across the map
-    // Room 1 - Top left area
-    enemies.add(Enemy(const Offset(160, 352), 30));
+    if (isMobile) {
+      // Fewer enemies for mobile map
+      // Set player starting position for mobile map
+      playerPos = const Offset(96, 96);
 
-    // Room 2 - Top right area
-    enemies.add(Enemy(const Offset(1088, 160), 35));
+      // Add fewer enemies for mobile map
+      enemies.add(Enemy(const Offset(160, 352), 30));
+      enemies.add(Enemy(const Offset(480, 480), 32));
+      enemies.add(Enemy(const Offset(480, 224), 34));
 
-    // Room 3 - Middle area
-    enemies.add(Enemy(const Offset(480, 480), 32));
+      // Add more enemies based on difficulty
+      if (difficulty >= 1) {
+        enemies.add(Enemy(const Offset(352, 352), 34));
+      }
 
-    // Room 4 - Bottom right area
-    enemies.add(Enemy(const Offset(1088, 1088), 36));
+      // Even more enemies on hard difficulty
+      if (difficulty >= 2) {
+        enemies.add(Enemy(const Offset(224, 224), 35));
+      }
+    } else {
+      // Regular desktop map with more enemies
+      // Add enemies at strategic positions across the map
+      // Room 1 - Top left area
+      enemies.add(Enemy(const Offset(160, 352), 30));
 
-    // Room 5 - Bottom left area
-    enemies.add(Enemy(const Offset(224, 928), 28));
+      // Room 2 - Top right area
+      enemies.add(Enemy(const Offset(1088, 160), 35));
 
-    // Corridor guards
-    enemies.add(Enemy(const Offset(480, 736), 33));
-    enemies.add(Enemy(const Offset(800, 544), 31));
+      // Room 3 - Middle area
+      enemies.add(Enemy(const Offset(480, 480), 32));
 
-    // More enemies based on difficulty
-    if (difficulty >= 1) {
-      enemies.add(Enemy(const Offset(352, 672), 34));
-      enemies.add(Enemy(const Offset(928, 800), 29));
-    }
+      // Room 4 - Bottom right area
+      enemies.add(Enemy(const Offset(1088, 1088), 36));
 
-    // Even more enemies on hard difficulty
-    if (difficulty >= 2) {
-      enemies.add(Enemy(const Offset(640, 192), 37));
-      enemies.add(Enemy(const Offset(800, 928), 30));
-      enemies.add(Enemy(const Offset(320, 480), 35));
+      // Room 5 - Bottom left area
+      enemies.add(Enemy(const Offset(224, 928), 28));
+
+      // Corridor guards
+      enemies.add(Enemy(const Offset(480, 736), 33));
+      enemies.add(Enemy(const Offset(800, 544), 31));
+
+      // More enemies based on difficulty
+      if (difficulty >= 1) {
+        enemies.add(Enemy(const Offset(352, 672), 34));
+        enemies.add(Enemy(const Offset(928, 800), 29));
+      }
+
+      // Even more enemies on hard difficulty
+      if (difficulty >= 2) {
+        enemies.add(Enemy(const Offset(640, 192), 37));
+        enemies.add(Enemy(const Offset(800, 928), 30));
+        enemies.add(Enemy(const Offset(320, 480), 35));
+      }
     }
 
     // Generate patrol paths for some enemies
@@ -481,7 +533,7 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
       }
     }
 
-    // Spawn some initial items
+    // Spawn items
     _spawnItems();
   }
 
@@ -531,13 +583,17 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
   void _spawnItems() {
     final Random random = Random();
 
+    // Add fewer items on mobile
+    int healthCount = isMobile ? 2 : 3;
+    int ammoCount = isMobile ? 3 : 5;
+
     // Add some health packs
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < healthCount; i++) {
       _spawnItem(ItemType.healthPack, random);
     }
 
     // Add some ammo packs
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < ammoCount; i++) {
       _spawnItem(ItemType.ammo, random);
     }
   }
@@ -1574,6 +1630,23 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
     // Check collisions with enemies
     checkEnemyCollisions();
+
+    // Handle mobile controls movement if active
+    if (usingMobileControls && !gameOver) {
+      if (mobileMoveDx != 0 || mobileMoveDy != 0) {
+        // Move forward/backward based on joystick y-axis
+        if (mobileMoveDy != 0) {
+          double moveX = cos(playerAngle) * moveSpeed * mobileMoveDy * dt;
+          double moveY = sin(playerAngle) * moveSpeed * mobileMoveDy * dt;
+          tryMove(moveX, moveY);
+        }
+
+        // Rotate based on joystick x-axis
+        if (mobileMoveDx != 0) {
+          playerAngle += mobileMoveDx * rotSpeed * dt;
+        }
+      }
+    }
   }
 
   // Add a screen shake effect when player takes damage
@@ -3376,6 +3449,49 @@ class DoomCloneGame extends FlameGame with KeyboardEvents, TapDetector {
 
       pinPainter.layout();
       pinPainter.paint(canvas, Offset(panelWidth - pinPainter.width - 5, 4));
+    }
+  }
+
+  // Handle mobile movement input
+  void handleMobileMovement(double dx, double dy) {
+    usingMobileControls = true;
+    mobileMoveDx = dx;
+    mobileMoveDy = dy;
+  }
+
+  // Handle mobile attack input
+  void handleMobileAttack(bool isAttacking) {
+    mobileAttacking = isAttacking;
+    if (isAttacking) {
+      shootEnemy();
+    }
+  }
+
+  // Try to move player by given amount, checking for wall collisions
+  void tryMove(double moveX, double moveY) {
+    // Calculate new position
+    double newX = playerPos.dx + moveX;
+    double newY = playerPos.dy + moveY;
+
+    // Convert to map coordinates
+    int mapX = (newX / cellSize).floor();
+    int mapY = (newY / cellSize).floor();
+
+    // Check for wall collisions
+    if (mapX >= 0 && mapX < mapWidth && mapY >= 0 && mapY < mapHeight) {
+      if (map[mapY][mapX] == 0) {
+        // No wall, allow movement
+        playerPos = Offset(newX, newY);
+      } else {
+        // Try to slide along walls
+        if (map[mapY][(playerPos.dx / cellSize).floor()] == 0) {
+          // Can move vertically
+          playerPos = Offset(playerPos.dx, newY);
+        } else if (map[(playerPos.dy / cellSize).floor()][mapX] == 0) {
+          // Can move horizontally
+          playerPos = Offset(newX, playerPos.dy);
+        }
+      }
     }
   }
 }
